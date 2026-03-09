@@ -502,7 +502,7 @@ func (h *hub) get(connectionID string) *session {
 	return h.connectionsByID[connectionID]
 }
 
-// getConnections returns a snapshot of active Connection instances in roomID.
+// getConnections returns a snapshot of all registered Connection instances in roomID.
 func (h *hub) getConnections(roomID string) []Connection {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

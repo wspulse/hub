@@ -27,7 +27,9 @@ type Server interface {
 	// Returns ErrConnectionNotFound if connectionID has no active connection.
 	Kick(connectionID string) error
 
-	// GetConnections returns a snapshot of active connections in roomID.
+	// GetConnections returns a snapshot of all registered connections in roomID.
+	// This includes suspended sessions (within the resume window) that have no
+	// active WebSocket transport.
 	GetConnections(roomID string) []Connection
 
 	// Close gracefully shuts down the server, terminating all connections.
@@ -192,7 +194,7 @@ func (s *internalServer) Kick(connectionID string) error {
 	}
 }
 
-// GetConnections returns a snapshot of active connections in roomID.
+// GetConnections returns a snapshot of all registered connections in roomID.
 func (s *internalServer) GetConnections(roomID string) []Connection {
 	return s.hub.getConnections(roomID)
 }
