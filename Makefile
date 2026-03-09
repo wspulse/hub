@@ -1,4 +1,4 @@
-.PHONY: help test test-cover lint fmt tidy clean
+.PHONY: help test test-cover bench lint fmt tidy clean
 
 # Default target
 help: ## Show available commands
@@ -12,6 +12,9 @@ test-cover: ## Run tests with coverage report
 	go test -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
+
+bench: ## Run benchmarks with memory allocation stats
+	go test -bench=. -benchmem -run=^$ ./...
 
 lint: ## Run go vet and golangci-lint
 	go vet ./...
