@@ -1,0 +1,51 @@
+# AGENTS.md — wspulse/server
+
+This file is the entry point for all AI coding agents (GitHub Copilot, Codex,
+Cursor, Claude, etc.). Full working rules are in
+`.github/instructions/copilot-instructions.md` — read it completely before
+making any changes.
+
+---
+
+## Quick Reference
+
+**Module**: `github.com/wspulse/server` | **Package**: `server`
+
+**Key files**:
+
+- `server.go` — public `Server` interface + `NewServer`
+- `hub.go` — single-goroutine event loop (all state mutations here)
+- `session.go` — `Connection` interface, `readPump` / `writePump`, resume logic
+- `options.go` — `ServerOption` builders
+- `resume.go` — ring buffer for session resumption
+- `errors.go` — sentinel errors
+- `doc/protocol.md` — wire protocol spec
+- `doc/internals.md` — internal architecture
+
+**Pre-commit gate**: `make check` (fmt → lint → test)
+
+---
+
+## Non-negotiable Rules
+
+1. **Read before write** — read the target file + `doc/protocol.md` +
+   `doc/internals.md` before any edit.
+2. **Hub serialization** — all session state mutations go through the hub's
+   event loop. Never mutate session state from outside the hub goroutine.
+3. **Goroutine lifecycle** — every goroutine must have an explicit exit
+   condition. `Close()` must not leak goroutines.
+4. **No breaking changes without version bump.**
+5. **No hardcoded secrets.**
+6. **Minimal changes** — one concern per edit; no drive-by refactors.
+
+---
+
+## Session Protocol
+
+> `doc/local/` is git-ignored. Never commit files under it.
+
+- **Start of session**: read `doc/local/ai-learning.md` (if present) and check
+  `doc/local/plan/` for any in-progress plan.
+- **Feature work**: save plan to `doc/local/plan/<feature-name>.md` first.
+- **End of session**: append mistakes/learnings to `doc/local/ai-learning.md`.
+  Format: `Date` / `Issue or Learning` / `Root Cause` / `Prevention Rule`.

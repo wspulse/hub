@@ -65,13 +65,16 @@ make tidy       # tidy module dependencies
 ## Session Protocol
 
 > Files under `doc/local/` are git-ignored and must **never** be committed.
-> This applies to all plan files and the AI learning log.
+> This applies to both plan files and `doc/local/ai-learning.md`.
 
+- **At the start of every session**: check whether `doc/local/plan/` contains
+  an in-progress plan for the current task, and read `doc/local/ai-learning.md`
+  (if it exists) to recall past mistakes and techniques before writing any code.
 - **Plan mode**: when implementing a new feature or multi-file fix, save a plan
   to `doc/local/plan/<feature-name>.md` before starting. Keep it updated with
   completed steps and any plan changes throughout the session.
 - **AI learning log**: at the end of a session where mistakes were made or
-  reusable techniques were discovered, append a short entry to the session log
-  under `doc/local/` (exact subfolder TBD). Entry format:
+  reusable techniques were discovered, append a short entry to
+  `doc/local/ai-learning.md`. Entry format:
   `Date` / `Issue or Learning` / `Root Cause` / `Prevention Rule`.
   Append only — never overwrite existing entries.
