@@ -7,6 +7,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// Configuration upper bounds — option functions panic if these ceilings are exceeded.
+const (
+	maxPingPeriod    = 5 * time.Minute  // WithHeartbeat: pingPeriod upper bound
+	maxPongWait      = 10 * time.Minute // WithHeartbeat: pongWait upper bound
+	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
+	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
+	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
+	maxResumeWindow  = 180              // WithResumeWindow upper bound — 180 s (3 min)
+)
+
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
 // roomID and connectionID for the new connection.
 // Returning a non-nil error rejects the upgrade with HTTP 401 and the error text as the body.
@@ -28,7 +38,7 @@ type serverConfig struct {
 	writeWait      time.Duration
 	maxMessageSize int64
 	sendBufferSize int
-	resumeWindow   time.Duration // 0 = disabled (default)
+	resumeWindow   time.Duration // session resume grace period in seconds; 0 = disabled
 	codec          Codec
 	checkOrigin    func(r *http.Request) bool
 	logger         *zap.Logger
@@ -76,10 +86,17 @@ func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 }
 
 // WithHeartbeat configures Ping/Pong heartbeat intervals.
-// Defaults: pingPeriod=10 s, pongWait=30 s. pingPeriod must be positive and less than pongWait.
+// Defaults: pingPeriod=10 s, pongWait=30 s.
+// pingPeriod must be in (0, 5m] and pongWait must be in (pingPeriod, 10m].
 func WithHeartbeat(pingPeriod, pongWait time.Duration) ServerOption {
 	if pingPeriod <= 0 || pongWait <= 0 || pingPeriod >= pongWait {
 		panic("wspulse: WithHeartbeat: pingPeriod must be positive and strictly less than pongWait")
+	}
+	if pingPeriod > maxPingPeriod {
+		panic("wspulse: WithHeartbeat: pingPeriod exceeds maximum (5m)")
+	}
+	if pongWait > maxPongWait {
+		panic("wspulse: WithHeartbeat: pongWait exceeds maximum (10m)")
 	}
 	return func(c *serverConfig) {
 		c.pingPeriod = pingPeriod
@@ -88,28 +105,37 @@ func WithHeartbeat(pingPeriod, pongWait time.Duration) ServerOption {
 }
 
 // WithWriteWait sets the deadline for a single write operation on a connection.
-// d must be positive.
+// d must be in (0, 30s].
 func WithWriteWait(d time.Duration) ServerOption {
 	if d <= 0 {
 		panic("wspulse: WithWriteWait: duration must be positive")
+	}
+	if d > maxWriteWait {
+		panic("wspulse: WithWriteWait: duration exceeds maximum (30s)")
 	}
 	return func(c *serverConfig) { c.writeWait = d }
 }
 
 // WithMaxMessageSize sets the maximum size in bytes for inbound messages.
-// n must be at least 1.
+// n must be in [1, 67108864] (64 MiB).
 func WithMaxMessageSize(n int64) ServerOption {
 	if n < 1 {
 		panic("wspulse: WithMaxMessageSize: n must be at least 1")
+	}
+	if n > maxMsgSizeBytes {
+		panic("wspulse: WithMaxMessageSize: n exceeds maximum (64 MiB)")
 	}
 	return func(c *serverConfig) { c.maxMessageSize = n }
 }
 
 // WithSendBufferSize sets the per-connection outbound channel capacity (number of frames).
-// n must be at least 1.
+// n must be in [1, 4096].
 func WithSendBufferSize(n int) ServerOption {
 	if n < 1 {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
+	}
+	if n > maxSendBufFrames {
+		panic("wspulse: WithSendBufferSize: n exceeds maximum (4096)")
 	}
 	return func(c *serverConfig) { c.sendBufferSize = n }
 }
@@ -147,13 +173,17 @@ func WithLogger(l *zap.Logger) ServerOption {
 }
 
 // WithResumeWindow configures the session resumption window. When a transport
-// drops, the session is suspended for d before firing OnDisconnect. If the same
-// connectionID reconnects within d, the session resumes transparently.
-// Default is 0 (disabled — OnDisconnect fires immediately on transport death).
-// Pass a positive duration to enable resume (e.g. WithResumeWindow(30*time.Second)).
-func WithResumeWindow(d time.Duration) ServerOption {
-	if d < 0 {
-		panic("wspulse: WithResumeWindow: duration must be non-negative")
+// drops, the session is suspended for seconds before firing OnDisconnect. If
+// the same connectionID reconnects within that period, the session resumes
+// transparently.
+// seconds is an integer number of seconds; passing 30 means a 30-second window.
+// Valid range: 0 (disabled) … 180 (3 min). Default is 0 (OnDisconnect fires immediately).
+func WithResumeWindow(seconds int) ServerOption {
+	if seconds < 0 {
+		panic("wspulse: WithResumeWindow: seconds must be non-negative")
 	}
-	return func(c *serverConfig) { c.resumeWindow = d }
+	if seconds > maxResumeWindow {
+		panic("wspulse: WithResumeWindow: seconds exceeds maximum (180 s / 3 min)")
+	}
+	return func(c *serverConfig) { c.resumeWindow = time.Duration(seconds) * time.Second }
 }

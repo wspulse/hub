@@ -57,13 +57,13 @@ completely separate from application JSON messages.
 
 ### Parameters
 
-| Parameter        | Default | Description                                                                   |
-| ---------------- | ------- | ----------------------------------------------------------------------------- |
-| `pingPeriod`     | 10 s    | `writePump` ticker interval; one `PingMessage` sent every 10 s                |
-| `pongWait`       | 30 s    | Rolling `ReadDeadline` window; reset to `now + 30 s` each time a Pong arrives |
-| `writeWait`      | 10 s    | Per-write deadline, **including the Ping control frame itself**               |
-| `maxMessageSize` | 512 B   | `readPump SetReadLimit`; exceeded size triggers immediate disconnect          |
-| Send buffer      | 256     | `session.send` channel depth (configurable via `WithSendBufferSize`)          |
+| Parameter        | Default | Valid range        | Description                                                                   |
+| ---------------- | ------- | ------------------ | ----------------------------------------------------------------------------- |
+| `pingPeriod`     | 10 s    | (0, 5 m]           | `writePump` ticker interval; one `PingMessage` sent every 10 s                |
+| `pongWait`       | 30 s    | (pingPeriod, 10 m] | Rolling `ReadDeadline` window; reset to `now + 30 s` each time a Pong arrives |
+| `writeWait`      | 10 s    | (0, 30 s]          | Per-write deadline, **including the Ping control frame itself**               |
+| `maxMessageSize` | 512 B   | [1, 64 MiB]        | `readPump SetReadLimit`; exceeded size triggers immediate disconnect          |
+| Send buffer      | 256     | [1, 4096]          | `session.send` channel depth (configurable via `WithSendBufferSize`)          |
 
 Configuring non-default values:
 
@@ -150,6 +150,11 @@ introduces a **session layer** that decouples the application-visible
 `Connection` from the underlying WebSocket transport. This allows transparent
 reconnection without leaking connect/disconnect events to the application
 layer.
+
+> **Time unit:** `WithResumeWindow` accepts an `int` representing **seconds**.
+> `WithResumeWindow(30)` means a 30-second grace window. There is no unit
+> multiplier — the raw integer is the number of seconds.
+> Valid range: 0 (disabled) … 180 (3 min).
 
 ### Architecture
 

@@ -856,7 +856,7 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithResumeWindow(5),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -925,7 +925,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(300*time.Millisecond),
+		wspulse.WithResumeWindow(1),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -962,7 +962,7 @@ func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithResumeWindow(5),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -1024,7 +1024,7 @@ func TestServer_Resume_KickBypassesWindow(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(10*time.Second),
+		wspulse.WithResumeWindow(10),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -1102,7 +1102,7 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(10*time.Second),
+		wspulse.WithResumeWindow(10),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -1141,7 +1141,7 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithResumeWindow(5),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -1187,7 +1187,7 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(2*time.Second),
+		wspulse.WithResumeWindow(2),
 	)
 	t.Cleanup(srv.Close)
 
@@ -1210,7 +1210,7 @@ func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(2*time.Second),
+		wspulse.WithResumeWindow(2),
 	)
 	t.Cleanup(srv.Close)
 
