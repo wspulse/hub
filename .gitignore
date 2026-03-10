@@ -262,6 +262,8 @@ vendor/
 tmp/
 temp/
 doc/local/
+go.work
+go.work.sum
 *.exe
 *.exe~
 *.dll
