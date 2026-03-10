@@ -120,6 +120,53 @@ connections := srv.GetConnections(roomID)
 
 ---
 
+## Frame Routing with `core/router`
+
+The router from [wspulse/core](https://github.com/wspulse/core) integrates directly with `WithOnMessage`. It dispatches each incoming frame to its handler based on the **`"type"` field** in the JSON message:
+
+```json
+{"id":"msg-001","type":"chat.message","payload":{"text":"hello"}}
+```
+
+The value of `"type"` is `frame.Type` on the Go side, and is the key used to select the handler.
+
+```go
+import (
+    "github.com/wspulse/server"
+    "github.com/wspulse/core/router"
+)
+
+r := router.New()
+r.Use(router.Recovery())
+r.Use(func(c *router.Context) {
+    // middleware runs before every handler
+    c.Set("roomID", c.Connection.RoomID())
+    c.Next()
+})
+
+// matches frames where "type" == "chat.message"
+r.On("chat.message", func(c *router.Context) {
+    srv.Broadcast(c.Connection.RoomID(), server.Frame{
+        Type:    "chat.message",
+        Payload: c.Frame.Payload,
+    })
+})
+
+// matches frames where "type" == "ping"
+r.On("ping", func(c *router.Context) {
+    _ = c.Connection.Send(server.Frame{Type: "pong"})
+})
+
+srv := server.NewServer(
+    connectFn,
+    server.WithOnMessage(func(conn server.Connection, f server.Frame) {
+        r.Dispatch(conn, f)
+    }),
+)
+```
+
+---
+
 ## Wire Protocol
 
 See [doc/protocol.md](doc/protocol.md) for the JSON frame format.
