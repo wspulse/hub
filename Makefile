@@ -6,28 +6,28 @@ help: ## Show available commands
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 test: ## Run all tests with race detector
-	go test -race -count=3 ./...
+	@go test -race -count=3 ./...
 
 test-cover: ## Run tests with coverage report
-	go test -race -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
+	@go test -race -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report: coverage.html"
 
 bench: ## Run benchmarks with memory allocation stats
-	go test -bench=. -benchmem -run=^$ ./...
+	@go test -bench=. -benchmem -run=^$ ./...
 
 lint: ## Run go vet and golangci-lint
-	go vet ./...
-	golangci-lint run ./...
+	@go vet ./...
+	@golangci-lint run ./...
 
 fmt: ## Format source files
-	gofmt -w .
-	goimports -w . 2>/dev/null || true
+	@gofmt -w .
+	@goimports -w . 2>/dev/null || true
 
 check: fmt lint test ## Run fmt, lint, and test (pre-commit gate)
 
 tidy: ## Tidy module dependencies
-	go mod tidy
+	@GOWORK=off go mod tidy
 
 clean: ## Remove build artifacts and test cache
 	@rm -f coverage.out coverage.html

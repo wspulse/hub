@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, develop]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
     paths-ignore:
@@ -25,25 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout core (dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: wspulse/core
-          path: core
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Setup workspace
-        run: go work init . ./core
-
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.11.2 # built with go1.26.1, required for go 1.26+ modules
 
   test:
     runs-on: ubuntu-latest
@@ -54,20 +45,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout core (dependency)
-        uses: actions/checkout@v4
-        with:
-          repository: wspulse/core
-          path: core
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-
-      - name: Setup workspace
-        run: go work init . ./core
 
       - name: Run tests
         run: go test -v -race -count=${{ env.TEST_COUNT }} -timeout 120s ./...
