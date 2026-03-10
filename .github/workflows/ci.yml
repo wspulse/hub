@@ -2,16 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main, develop]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.github/instructions/**'
-      - 'doc/**'
-  pull_request:
-    branches: [main]
     paths-ignore:
       - '**.md'
       - 'LICENSE'
