@@ -42,6 +42,7 @@ type internalServer struct {
 	hub       *hub
 	upgrader  websocket.Upgrader
 	closeOnce sync.Once
+	hubDone   chan struct{} // closed when the hub goroutine fully exits
 }
 
 // verify Server interface is satisfied at compile time.
@@ -57,6 +58,7 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 		option(config)
 	}
 	h := newHub(config)
+	hubDone := make(chan struct{})
 	go func() {
 		h.run()
 		// Final drain: catch register messages that slipped through between
@@ -70,13 +72,15 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 				)
 				_ = message.transport.Close()
 			default:
+				close(hubDone)
 				return
 			}
 		}
 	}()
 	srv := &internalServer{
-		config: config,
-		hub:    h,
+		config:  config,
+		hub:     h,
+		hubDone: hubDone,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -199,11 +203,14 @@ func (s *internalServer) GetConnections(roomID string) []Connection {
 	return s.hub.getConnections(roomID)
 }
 
-// Close gracefully shuts down the Server.
-// Safe to call multiple times; only the first call has effect.
+// Close gracefully shuts down the Server and blocks until the hub
+// goroutine has fully exited and all managed resources are released.
+// Safe to call multiple times and from multiple goroutines; only the
+// first call triggers shutdown, but all calls block until completion.
 func (s *internalServer) Close() {
 	s.closeOnce.Do(func() {
 		s.config.logger.Info("wspulse: server closing")
 		close(s.hub.done)
 	})
+	<-s.hubDone
 }
