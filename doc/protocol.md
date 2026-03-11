@@ -20,7 +20,7 @@ JSON object in a WebSocket **text** frame:
 ```json
 {
   "id":      "<uuid or empty>",
-  "type":    "<string>",
+  "event":   "<string>",
   "payload": <any valid JSON value>
 }
 ```
@@ -28,13 +28,13 @@ JSON object in a WebSocket **text** frame:
 | Field     | Required | Description                                                            |
 | --------- | -------- | ---------------------------------------------------------------------- |
 | `id`      | No       | Opaque string used for ACK correlation. Omitted if empty.              |
-| `type`    | No       | Application-defined string classifying the frame purpose.              |
+| `event`   | No       | Application-defined string classifying the frame purpose.              |
 | `payload` | No       | Any valid JSON value. The wspulse layer does not interpret this field. |
 
 All fields are optional at the transport layer. Their semantics are defined by
 the application layer built on top of wspulse.
 
-### Suggested type values
+### Suggested event values
 
 These are conventions only — applications may use any string:
 
@@ -51,7 +51,7 @@ Chat message (server → client):
 ```json
 {
   "id": "01JXABC",
-  "type": "msg",
+  "event": "msg",
   "payload": { "text": "hello", "user": "alice" }
 }
 ```
@@ -61,7 +61,7 @@ System event (server → client):
 ```json
 {
   "id": "01JXABD",
-  "type": "sys",
+  "event": "sys",
   "payload": { "event": "member_join", "user_id": "bob" }
 }
 ```
@@ -69,7 +69,7 @@ System event (server → client):
 Acknowledgement (client → server):
 
 ```json
-{ "type": "ack", "payload": { "id": "01JXABC" } }
+{ "event": "ack", "payload": { "id": "01JXABC" } }
 ```
 
 ---

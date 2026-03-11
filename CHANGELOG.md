@@ -16,9 +16,9 @@
 
 - `Server` with `NewServer(connect ConnectFunc, opts ...ServerOption) *Server`
 - `Server.Send(connectionID string, frame Frame) error`
-- `Server.Broadcast(roomID string, frame Frame)`
+- `Server.Broadcast(roomID string, frame Frame) error`
 - `Server.GetConnections(roomID string) []Connection`
-- `Server.Close() error` — synchronous; waits for all internal goroutines to exit
+- `Server.Close()` — synchronous; waits for all internal goroutines to exit
 - `Connection` interface: `ID()`, `RoomID()`, `Send(Frame)`, `Close()`, `Done()`
 - Session resumption: clients reconnect within `WithResumeWindow` without losing queued frames
 - `WithOnConnect`, `WithOnMessage`, `WithOnDisconnect` callbacks
