@@ -2909,11 +2909,18 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	}
 
 	// Application calls Close() on the suspended Connection.
+	start := time.Now()
 	_ = connection.Close()
 
-	// onDisconnect must fire when the grace timer expires (~1 second).
+	// onDisconnect must fire when the grace timer expires (~1 second), not immediately.
+	// ~200ms of the 1s grace window already elapsed, so ~800ms remain; threshold is 700ms
+	// to prove Close() did not trigger onDisconnect instantly.
 	select {
 	case <-disconnected:
+		elapsed := time.Since(start)
+		if elapsed < 700*time.Millisecond {
+			t.Fatalf("onDisconnect fired too early: %v after Connection.Close(), want >= 700ms", elapsed)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("onDisconnect did not fire after Connection.Close() on suspended session")
 	}
