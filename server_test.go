@@ -2865,6 +2865,66 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 	}
 }
 
+// TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect verifies
+// that calling Connection.Close() on a suspended session eventually fires
+// onDisconnect once the grace timer expires. This covers the stateClosed
+// path in handleGraceExpired.
+func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
+	connected := make(chan wspulse.Connection, 1)
+	disconnected := make(chan struct{})
+	var once sync.Once
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(1), // 1-second grace window
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- connection:
+			default:
+			}
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			once.Do(func() { close(disconnected) })
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	var connection wspulse.Connection
+	select {
+	case connection = <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	// Drop the transport — session enters suspended state.
+	_ = c.WriteMessage(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "dropping"))
+	_ = c.Close()
+	time.Sleep(200 * time.Millisecond) // let hub process transportDied
+
+	// Confirm the session is still registered (suspended, not yet cleaned up).
+	if conns := srv.GetConnections("test-room"); len(conns) == 0 {
+		t.Fatal("session was removed before grace window elapsed; expected it to be suspended")
+	}
+
+	// Application calls Close() on the suspended Connection.
+	_ = connection.Close()
+
+	// onDisconnect must fire when the grace timer expires (~1 second).
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("onDisconnect did not fire after Connection.Close() on suspended session")
+	}
+
+	// Session must be removed from hub maps after onDisconnect.
+	time.Sleep(50 * time.Millisecond)
+	if conns := srv.GetConnections("test-room"); len(conns) != 0 {
+		t.Errorf("want 0 connections after Close + grace expiry, got %d", len(conns))
+	}
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

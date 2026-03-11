@@ -335,22 +335,23 @@ func (h *hub) handleGraceExpired(message graceExpiredMessage) {
 
 	h.removeSession(target)
 
-	// Only call Close()/onDisconnect if the session was still suspended.
-	// If stateClosed, Close() was already called; just clean up maps.
+	// For stateSuspended: normal window expiry — Close() then onDisconnect.
+	// For stateClosed: Connection.Close() was called on the suspended session
+	// before the timer fired. Fire onDisconnect to match connected-session
+	// behaviour. Double-fire with Kick is prevented because handleKick calls
+	// removeSession which bumps suspendEpoch, making this message stale.
 	if state == stateSuspended {
 		_ = target.Close()
-
 		h.config.logger.Info("wspulse: session expired",
 			zap.String("conn_id", target.id),
 		)
-
-		if fn := h.config.onDisconnect; fn != nil {
-			go fn(target, nil)
-		}
 	} else {
-		h.config.logger.Debug("wspulse: grace expired for already-closed session, cleaning up maps",
+		h.config.logger.Info("wspulse: suspended session closed by application",
 			zap.String("conn_id", target.id),
 		)
+	}
+	if fn := h.config.onDisconnect; fn != nil {
+		go fn(target, nil)
 	}
 }
 
@@ -423,6 +424,10 @@ func (h *hub) removeSession(target *session) {
 		target.graceTimer.Stop()
 		target.graceTimer = nil
 	}
+	// Bump epoch so that any in-flight graceExpiredMessage for this session
+	// is treated as stale by handleGraceExpired. Without this, a Kick that
+	// races with a just-fired grace timer would double-fire onDisconnect.
+	target.suspendEpoch++
 	target.mu.Unlock()
 
 	h.mu.Lock()

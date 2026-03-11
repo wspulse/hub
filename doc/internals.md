@@ -85,7 +85,6 @@ server.NewServer(connect,
    incoming Pong:
    - `SetReadDeadline(now + pongWait)` — rolls the deadline forward; connection
      stays alive as long as at least one Pong arrives every `pongWait` period.
-   - `connection.lastSeen = time.Now()` — updated for observability.
 
 3. **Client-side Pong** — Standard WebSocket implementations (browsers, Gorilla)
    reply to Ping automatically; the application layer does not need to handle this.
@@ -177,7 +176,8 @@ Connected → Closed    : Kick() or Close() (onDisconnect fires)
 
 Suspended → Connected : same connectionID reconnect (cancel timer, replay buffer, no callback)
 Suspended → Closed    : timer expires (onDisconnect fires, session destroyed)
-Suspended → Closed    : Kick() or server Close() (cancel timer, onDisconnect fires)
+Suspended → Closed    : Connection.Close() (timer fires at expiry, onDisconnect fires)
+Suspended → Closed    : Kick() or server.Close() (cancel timer, onDisconnect fires immediately)
 
 Closed → [*]
 ```
@@ -235,10 +235,14 @@ intentional removal, not a transient network failure.
 Kick is routed through the hub's event loop via a `kickRequest` channel.
 This ensures that map removal, `session.Close()`, and the `OnDisconnect`
 callback are all serialized with other state mutations (register,
-transportDied, graceExpired). Without this, Kick on a **suspended** session
-would call `Close()` directly but never clean up hub maps — no pumps are
-running to send a `transportDied` message, and the grace timer's handler
-skips closed sessions.
+transportDied, graceExpired). Without this, calling `Close()` directly on a
+**suspended** session would close `session.done` but leave the session in hub
+maps until the grace timer fires.
+
+To prevent `Kick` from double-firing `onDisconnect` when a grace timer happens
+to fire simultaneously, `removeSession` (called by `handleKick`) bumps
+`suspendEpoch`. The stale grace message is then discarded by
+`handleGraceExpired`'s epoch check.
 
 ```
 Kick(connectionID) → kickRequest{connectionID, result} → hub.kick channel
