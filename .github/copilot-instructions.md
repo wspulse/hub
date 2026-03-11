@@ -43,7 +43,8 @@ make tidy       # tidy module dependencies
     - `feature/<name>` — new feature
     - `refactor/<name>` — restructure without behaviour change
     - `bugfix/<name>` — bug fix
-    - CI runs on all three prefixes. Open a PR into `develop`; `develop` requires status checks to pass.
+    - `fix/<name>` — quick fix (e.g. config, docs, CI)
+    - CI runs on all four prefixes. Open a PR into `develop`; `develop` requires status checks to pass.
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
   - **Benchmarks**: changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Verify with `make bench`.
@@ -77,9 +78,9 @@ make tidy       # tidy module dependencies
 9. **Accuracy** — if you have questions or need clarification, ask the user. Do not make assumptions without confirming.
 10. **Language consistency** — when the user writes in Traditional Chinese, respond in Traditional Chinese; otherwise respond in English.
 11. **Panic policy — fail early, never at steady-state runtime** — Enforce errors at the earliest possible phase:
-   1. Prefer compile-time enforcement via the type system.
-   2. **Setup-time programmer errors** (nil handler, empty event name, duplicate registration, invalid option): `panic`. These indicate a caller logic bug; crashing at startup is correct — the process should never start accepting traffic with a misconfigured router or server.
-   3. **Steady-state runtime** (`Dispatch`, `Send`, `Close`, reconnect loops, and any code that runs after startup completes): return `error`, never `panic`.
+    1. Prefer compile-time enforcement via the type system.
+    2. **Setup-time programmer errors** (nil handler, empty event name, duplicate registration, invalid option): `panic`. These indicate a caller logic bug; crashing at startup is correct — the process should never start accepting traffic with a misconfigured router or server.
+    3. **Steady-state runtime** (`Dispatch`, `Send`, `Close`, reconnect loops, and any code that runs after startup completes): return `error`, never `panic`.
 
 ## Session Protocol
 
