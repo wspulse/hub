@@ -29,7 +29,7 @@ make tidy       # tidy module dependencies
 
 ## Conventions
 
-- **Go style**: `gofmt`/`goimports`, snake_case filenames, GoDoc on all public symbols, `if err != nil` error handling (never `panic`), secrets from env vars only.
+- **Go style**: `gofmt`/`goimports`, snake_case filenames, GoDoc on all public symbols, `if err != nil` error handling (no runtime panics; setup-time programmer-error panics are allowed — see **Panic policy** critical rule), secrets from env vars only.
 - **Naming**:
   - **Interface names** must use full words — no abbreviations. Write `Connection`, not `Conn`; `Configuration`, not `Cfg`; `Manager`, not `Mgr`.
   - **Variable and parameter names** follow standard Go style: single-letter or short receivers (`r` for `*Router`, `c` for `*Context`), idiomatic short names for local scope (`conn`, `fn`, `err`, `ok`, `n`, `i`, `v`), and descriptive names for package-level identifiers.
@@ -76,6 +76,10 @@ make tidy       # tidy module dependencies
    4. If any item fails — fix it before committing.
 9. **Accuracy** — if you have questions or need clarification, ask the user. Do not make assumptions without confirming.
 10. **Language consistency** — when the user writes in Traditional Chinese, respond in Traditional Chinese; otherwise respond in English.
+11. **Panic policy — fail early, never at steady-state runtime** — Enforce errors at the earliest possible phase:
+   1. Prefer compile-time enforcement via the type system.
+   2. **Setup-time programmer errors** (nil handler, empty event name, duplicate registration, invalid option): `panic`. These indicate a caller logic bug; crashing at startup is correct — the process should never start accepting traffic with a misconfigured router or server.
+   3. **Steady-state runtime** (`Dispatch`, `Send`, `Close`, reconnect loops, and any code that runs after startup completes): return `error`, never `panic`.
 
 ## Session Protocol
 
