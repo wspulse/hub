@@ -102,8 +102,10 @@ depth (default **256**). When `Server.Broadcast` or `Server.Send` is called:
 
 1. The encoded frame bytes are sent to `session.send` via a non-blocking select.
 2. If the channel is **full**, `ErrSendBufferFull` is returned to the caller
-   (for direct `Send`) or the target connection is silently skipped and
-   dropped (for `Broadcast`).
+   (for direct `Send`) or **drop-oldest** backpressure is applied (for
+   `Broadcast`): the oldest frame in the connection's send buffer is discarded
+   to make room for the new frame; if the buffer is still full after that, the
+   new frame is silently dropped.
 3. When `resumeWindow > 0` and the session is suspended (no active WebSocket),
    frames are buffered to an in-memory `ringBuffer` instead of the send channel.
    These frames are replayed when the client reconnects.
@@ -169,10 +171,10 @@ swapped in silently.
 ```
 [*] → Connected : handleRegister creates session + transport
 
-Connected → Connected : same connectionID reconnect (swap transport, no callback)
 Connected → Suspended : transport dies, resumeWindow > 0 (start timer, buffer frames)
 Connected → Closed    : transport dies, resumeWindow == 0 (onDisconnect fires)
 Connected → Closed    : Kick() or Close() (onDisconnect fires)
+Connected → Closed    : duplicate connectionID arrives (old session kicked, onDisconnect fires with ErrDuplicateConnectionID; new session created)
 
 Suspended → Connected : same connectionID reconnect (cancel timer, replay buffer, no callback)
 Suspended → Closed    : timer expires (onDisconnect fires, session destroyed)

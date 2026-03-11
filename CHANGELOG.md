@@ -8,6 +8,11 @@
 - `Frame.Event` (renamed from `Frame.Type`) and wire key `"event"` (renamed from `"type"`) — follows core v0.2.0 breaking change (**breaking**)
 - Added router integration section to README
 
+### Fixed
+
+- `Connection.Close()` on a suspended session now correctly fires `OnDisconnect` when the grace timer expires; previously, the callback was silently skipped for sessions closed while suspended
+- `removeSession` now bumps `suspendEpoch` to prevent `OnDisconnect` from double-firing when `Kick` races with a simultaneously-expiring grace timer
+
 ---
 
 ## [0.1.0] - 2026-03-10
