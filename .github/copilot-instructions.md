@@ -41,6 +41,12 @@ make tidy       # tidy module dependencies
   - All commit messages in English.
   - Each commit must represent exactly one logical change.
   - Before every commit, run `make check` (runs fmt → lint → test in order).
+  - **Branch strategy**: never push directly to `develop` or `main`.
+    - `feature/<name>` — new feature
+    - `refactor/<name>` — restructure without behaviour change
+    - `bugfix/<name>` — bug fix
+    - `fix/<name>` — quick fix (e.g. config, docs, CI)
+    - CI triggers on all four branch prefixes and on PRs targeting `main`/`develop`. Tags do **not** trigger CI (the tag is created after CI already passed). Open a PR into `develop`; `develop` requires status checks to pass.
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
   - **Benchmarks**: changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Verify with `make bench`.
