@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main, develop, 'feature/**', 'refactor/**', 'bugfix/**', 'fix/**']
-    tags:
-      - 'v[0-9]*.[0-9]*.[0-9]*'
     paths-ignore:
       - '**.md'
       - 'LICENSE'
@@ -38,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      TEST_COUNT: ${{ github.ref_type == 'tag' && '5' || github.ref == 'refs/heads/main' && '3' || '1' }}
+      TEST_COUNT: ${{ github.event_name == 'pull_request' && '5' || github.ref == 'refs/heads/main' && '3' || '1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
