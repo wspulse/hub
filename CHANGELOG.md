@@ -19,7 +19,7 @@
 
 ### Added
 
-- `Server` with `NewServer(connect ConnectFunc, opts ...ServerOption) *Server`
+- `Server` with `NewServer(connect ConnectFunc, options ...ServerOption) Server`
 - `Server.Send(connectionID string, frame Frame) error`
 - `Server.Broadcast(roomID string, frame Frame) error`
 - `Server.GetConnections(roomID string) []Connection`
