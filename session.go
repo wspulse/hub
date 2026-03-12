@@ -158,9 +158,29 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	}
 }
 
+// cancelGraceTimer stops any running grace timer and bumps the suspend epoch
+// so that in-flight graceExpiredMessages are detected as stale.
+func (s *session) cancelGraceTimer() {
+	s.mu.Lock()
+	if s.graceTimer != nil {
+		s.graceTimer.Stop()
+		s.graceTimer = nil
+	}
+	s.suspendEpoch++
+	s.mu.Unlock()
+}
+
 // Close initiates a graceful shutdown of the session.
 // Signals writePump to send a WebSocket close frame and stop.
 // Safe to call multiple times; only the first call has effect.
+//
+// Ordering note: hub-driven teardown (disconnectSession) always calls
+// cancelGraceTimer via removeSession before calling Close(). By the time
+// Close() acquires the lock, graceTimer is already nil, so timer.Reset(0)
+// is never invoked on that path. timer.Reset(0) is only reached when the
+// application calls Close() directly on a suspended session; in that case
+// it is intentional — it signals the hub via the existing graceExpired
+// channel without requiring a separate session-to-hub channel.
 func (s *session) Close() error {
 	s.closeOnce.Do(func() {
 		s.config.logger.Debug("wspulse: session closing",
@@ -168,10 +188,19 @@ func (s *session) Close() error {
 		)
 		s.mu.Lock()
 		s.state = stateClosed
+		timer := s.graceTimer
+		s.graceTimer = nil
 		if s.resumeBuffer != nil {
 			s.resumeBuffer = nil
 		}
 		s.mu.Unlock()
+
+		if timer != nil {
+			// Reset to 0 so handleGraceExpired fires immediately.
+			// See ordering note on Close() above.
+			timer.Reset(0)
+		}
+
 		close(s.done)
 	})
 	return nil

@@ -134,13 +134,7 @@ func (h *hub) handleRegister(message registerMessage) {
 			// Bump suspendEpoch so that a graceExpiredMessage that was
 			// already enqueued (timer fired before Stop) is detected
 			// as stale and ignored by handleGraceExpired.
-			existing.mu.Lock()
-			if existing.graceTimer != nil {
-				existing.graceTimer.Stop()
-				existing.graceTimer = nil
-			}
-			existing.suspendEpoch++
-			existing.mu.Unlock()
+			existing.cancelGraceTimer()
 
 			existing.attachWS(message.transport, h)
 			h.config.logger.Info("wspulse: session resumed",
@@ -153,18 +147,17 @@ func (h *hub) handleRegister(message registerMessage) {
 			h.config.logger.Warn("wspulse: duplicate conn_id, kicking existing session",
 				zap.String("conn_id", message.connectionID),
 			)
-			h.removeSession(existing)
-			_ = existing.Close()
-			if fn := h.config.onDisconnect; fn != nil {
-				go fn(existing, ErrDuplicateConnectionID)
-			}
+			h.disconnectSession(existing, ErrDuplicateConnectionID)
 
 		case stateClosed:
-			// Stale entry; clean up and fall through.
+			// Close() was called externally before the hub processed the
+			// resulting cleanup message (graceExpired or transportDied).
+			// Fire onDisconnect now; those paths will see the session is
+			// no longer registered and skip.
 			h.config.logger.Debug("wspulse: stale closed session removed",
 				zap.String("conn_id", message.connectionID),
 			)
-			h.removeSession(existing)
+			h.disconnectSession(existing, nil)
 		}
 	}
 
@@ -202,8 +195,8 @@ func (h *hub) handleRegister(message registerMessage) {
 }
 
 // handleTransportDied processes a dead WebSocket transport.
-// If resume is enabled and the session is still connected, transition to
-// suspended and start the grace timer. Otherwise destroy the session.
+// If resume is enabled and the session state is stateConnected, transition
+// to stateSuspended and start the grace timer. Otherwise destroy the session.
 func (h *hub) handleTransportDied(message transportDiedMessage) {
 	target := message.session
 
@@ -249,10 +242,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 				h.config.logger.Debug("wspulse: transport-died for closed session, cleaning up",
 					zap.String("conn_id", target.id),
 				)
-				h.removeSession(target)
-				if fn := h.config.onDisconnect; fn != nil {
-					go fn(target, message.err)
-				}
+				h.disconnectSession(target, message.err)
 			} else {
 				h.config.logger.Debug("wspulse: transport-died for unregistered closed session, skipping",
 					zap.String("conn_id", target.id),
@@ -279,6 +269,18 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			}
 		})
 		target.mu.Lock()
+		// Re-check state: Close() may have set stateClosed between
+		// detachWS() and here. In that case graceTimer is still nil,
+		// so Close()'s timer.Reset(0) never fired. Handle it inline.
+		if target.state == stateClosed {
+			target.mu.Unlock()
+			timer.Stop()
+			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
+				zap.String("conn_id", target.id),
+			)
+			h.disconnectSession(target, nil)
+			return
+		}
 		target.graceTimer = timer
 		target.mu.Unlock()
 
@@ -294,11 +296,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 		zap.String("conn_id", target.id),
 		zap.Error(message.err),
 	)
-	h.removeSession(target)
-	_ = target.Close()
-	if fn := h.config.onDisconnect; fn != nil {
-		go fn(target, message.err)
-	}
+	h.disconnectSession(target, message.err)
 }
 
 // handleGraceExpired destroys a session whose resume window has elapsed
@@ -333,25 +331,19 @@ func (h *hub) handleGraceExpired(message graceExpiredMessage) {
 		return
 	}
 
-	h.removeSession(target)
-
-	// Only call Close()/onDisconnect if the session was still suspended.
-	// If stateClosed, Close() was already called; just clean up maps.
+	// For stateSuspended: normal window expiry — Close() then onDisconnect.
+	// For stateClosed: application called Close() on the suspended session,
+	// which Reset the timer to 0 to force immediate expiry.
 	if state == stateSuspended {
-		_ = target.Close()
-
 		h.config.logger.Info("wspulse: session expired",
 			zap.String("conn_id", target.id),
 		)
-
-		if fn := h.config.onDisconnect; fn != nil {
-			go fn(target, nil)
-		}
 	} else {
-		h.config.logger.Debug("wspulse: grace expired for already-closed session, cleaning up maps",
+		h.config.logger.Info("wspulse: suspended session closed by application",
 			zap.String("conn_id", target.id),
 		)
 	}
+	h.disconnectSession(target, nil)
 }
 
 // handleKick removes a session, closes it, and fires onDisconnect.
@@ -369,16 +361,11 @@ func (h *hub) handleKick(request kickRequest) {
 		return
 	}
 
-	h.removeSession(target)
-	_ = target.Close()
-
 	h.config.logger.Debug("wspulse: session kicked",
 		zap.String("conn_id", request.connectionID),
 	)
 
-	if fn := h.config.onDisconnect; fn != nil {
-		go fn(target, nil)
-	}
+	h.disconnectSession(target, nil)
 	request.result <- nil
 }
 
@@ -416,14 +403,20 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 	)
 }
 
+// disconnectSession removes the session from hub maps, closes it, and fires
+// onDisconnect. Safe to call even if Close() was already called externally
+// (closeOnce makes it idempotent).
+func (h *hub) disconnectSession(target *session, err error) {
+	h.removeSession(target)
+	_ = target.Close()
+	if fn := h.config.onDisconnect; fn != nil {
+		go fn(target, err)
+	}
+}
+
 // removeSession removes session from the hub maps and cancels any grace timer.
 func (h *hub) removeSession(target *session) {
-	target.mu.Lock()
-	if target.graceTimer != nil {
-		target.graceTimer.Stop()
-		target.graceTimer = nil
-	}
-	target.mu.Unlock()
+	target.cancelGraceTimer()
 
 	h.mu.Lock()
 	if room := h.rooms[target.roomID]; room != nil && room[target.id] == target {
@@ -456,14 +449,7 @@ func (h *hub) shutdown() {
 	)
 	for _, room := range h.rooms {
 		for _, target := range room {
-			// Stop grace timers for suspended sessions.
-			target.mu.Lock()
-			if target.graceTimer != nil {
-				target.graceTimer.Stop()
-				target.graceTimer = nil
-			}
-			target.mu.Unlock()
-
+			target.cancelGraceTimer()
 			_ = target.Close()
 			disconnected = append(disconnected, target)
 		}
