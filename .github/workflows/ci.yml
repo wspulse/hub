@@ -15,40 +15,5 @@ on:
       - '.github/instructions/**'
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.11.2 # built with go1.26.1, required for go 1.26+ modules
-
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      TEST_COUNT: ${{ github.event_name == 'pull_request' && '5' || github.ref == 'refs/heads/main' && '3' || '1' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-
-      - name: Download modules
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v -race -count=${{ env.TEST_COUNT }} -timeout 120s ./...
+  ci:
+    uses: wspulse/.github/.github/workflows/go-ci.yml@main

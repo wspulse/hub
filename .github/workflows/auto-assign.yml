@@ -6,18 +6,4 @@ on:
 
 jobs:
   assign:
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.addAssignees({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              assignees: [context.payload.pull_request.user.login]
-            })
+    uses: wspulse/.github/.github/workflows/auto-assign.yml@main
