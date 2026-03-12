@@ -2994,10 +2994,10 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 
 // TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect verifies that
 // when many suspended sessions call Close() concurrently, every single
-// onDisconnect callback fires. The closeRequests channel has a buffer of 64;
-// this test uses 200 sessions to overflow it and expose a non-blocking send
-// that silently drops the message (the grace timer is already stopped, so
-// no fallback exists).
+// onDisconnect callback fires. This is a regression test for a bug where,
+// under heavy concurrent Close() calls on suspended sessions, some
+// onDisconnect callbacks were never invoked due to the internal close
+// coordination logic dropping events.
 func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	const count = 200
 
@@ -3083,4 +3083,76 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
+}
+
+// TestServer_Resume_CloseRacesTransportDied verifies that onDisconnect fires
+// promptly even when Close() races with handleTransportDied's grace timer
+// setup. There is a window between detachWS (state → stateSuspended) and
+// graceTimer assignment where Close() sees graceTimer == nil and cannot call
+// timer.Reset(0). Without a fix, onDisconnect is delayed until the full
+// resume window expires.
+//
+// To maximise the chance of hitting this window, the test closes the
+// transport and immediately calls Close() without waiting for suspension.
+func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
+	const count = 50
+
+	connected := make(chan wspulse.Connection, count)
+	disconnectCount := atomic.Int64{}
+	allDisconnected := make(chan struct{})
+
+	srv := wspulse.NewServer(
+		func(r *http.Request) (string, string, error) {
+			return "room", "", nil
+		},
+		wspulse.WithResumeWindow(30), // long window — if delayed, test times out
+		wspulse.WithOnConnect(func(c wspulse.Connection) {
+			connected <- c
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			if disconnectCount.Add(1) == int64(count) {
+				close(allDisconnected)
+			}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	type pair struct {
+		ws   *websocket.Conn
+		conn wspulse.Connection
+	}
+	pairs := make([]pair, count)
+	for i := 0; i < count; i++ {
+		ws, _, err := websocket.DefaultDialer.Dial(u, nil)
+		if err != nil {
+			t.Fatalf("Dial %d: %v", i, err)
+		}
+		c := <-connected
+		pairs[i] = pair{ws: ws, conn: c}
+	}
+
+	// For each pair: close the transport and call Close() back-to-back
+	// with NO sleep in between, so Close() may execute before the hub
+	// has finished assigning graceTimer in handleTransportDied.
+	var wg sync.WaitGroup
+	for _, p := range pairs {
+		wg.Add(1)
+		go func(p pair) {
+			defer wg.Done()
+			_ = p.ws.Close()
+			_ = p.conn.Close()
+		}(p)
+	}
+	wg.Wait()
+
+	select {
+	case <-allDisconnected:
+	case <-time.After(3 * time.Second):
+		got := disconnectCount.Load()
+		t.Fatalf("want %d onDisconnect within 3s, got %d (delayed by grace window?)", count, got)
+	}
 }

@@ -279,6 +279,21 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			}
 		})
 		target.mu.Lock()
+		// Re-check state: Close() may have set stateClosed between
+		// detachWS() and here. In that case graceTimer is still nil,
+		// so Close()'s timer.Reset(0) never fired. Handle it inline.
+		if target.state == stateClosed {
+			target.mu.Unlock()
+			timer.Stop()
+			h.removeSession(target)
+			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
+				zap.String("conn_id", target.id),
+			)
+			if fn := h.config.onDisconnect; fn != nil {
+				go fn(target, nil)
+			}
+			return
+		}
 		target.graceTimer = timer
 		target.mu.Unlock()
 
