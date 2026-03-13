@@ -1,24 +1,24 @@
 package wspulse
 
-import wspulse "github.com/wspulse/core"
+import core "github.com/wspulse/core"
 
 // Frame is the minimal transport unit for WebSocket communication.
-type Frame = wspulse.Frame
+type Frame = core.Frame
 
 // Codec encodes and decodes Frames for transmission.
-type Codec = wspulse.Codec
+type Codec = core.Codec
 
 // JSONCodec is the default Codec. Frames are encoded as JSON text frames.
-var JSONCodec = wspulse.JSONCodec
+var JSONCodec = core.JSONCodec
 
 // WebSocket message type constants.
 const (
-	TextMessage   = wspulse.TextMessage
-	BinaryMessage = wspulse.BinaryMessage
+	TextMessage   = core.TextMessage
+	BinaryMessage = core.BinaryMessage
 )
 
 // Re-exported sentinel errors from github.com/wspulse/core.
 var (
-	ErrConnectionClosed = wspulse.ErrConnectionClosed
-	ErrSendBufferFull   = wspulse.ErrSendBufferFull
+	ErrConnectionClosed = core.ErrConnectionClosed
+	ErrSendBufferFull   = core.ErrSendBufferFull
 )
