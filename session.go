@@ -1,4 +1,4 @@
-package server
+package wspulse
 
 import (
 	"fmt"

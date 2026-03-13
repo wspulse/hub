@@ -1,4 +1,4 @@
-package server
+package wspulse
 
 // ringBuffer is a fixed-capacity circular buffer of raw encoded frames.
 // Used by session to buffer outbound frames while the WebSocket transport

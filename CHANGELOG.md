@@ -4,6 +4,14 @@
 
 ---
 
+## [0.3.0] - 2026-03-13
+
+### Changed
+
+- Package name changed from `server` to `wspulse` — import path unchanged (`github.com/wspulse/server`), but the default identifier is now `wspulse.NewServer`, `wspulse.Server`, `wspulse.Connection`, etc. Consumers using the old bare import must add an alias (`server "github.com/wspulse/server"`) or update references. (**breaking**)
+
+---
+
 ## [0.2.1] - 2026-03-12
 
 ### Changed

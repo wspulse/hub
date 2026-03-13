@@ -2,7 +2,7 @@
 
 A minimal, production-ready WebSocket server for Go with room-based routing, session resumption, and pluggable codecs.
 
-**Status:** v0 — API is being stabilized. Module path: `github.com/wspulse/server`.
+**Status:** v0 — API is being stabilized. Module path: `github.com/wspulse/server`. Package name: `wspulse`.
 
 ---
 
@@ -27,9 +27,9 @@ go get github.com/wspulse/server
 ## Quick Start
 
 ```go
-import "github.com/wspulse/server"
+import "github.com/wspulse/server" // package name: wspulse
 
-srv := server.NewServer(
+srv := wspulse.NewServer(
     // ConnectFunc: authenticate and assign room + connection IDs
     func(r *http.Request) (roomID, connectionID string, err error) {
         token := r.URL.Query().Get("token")
@@ -39,15 +39,15 @@ srv := server.NewServer(
         }
         return r.URL.Query().Get("room"), userID, nil
     },
-    server.WithOnMessage(func(connection server.Connection, f server.Frame) {
+    wspulse.WithOnMessage(func(connection wspulse.Connection, f wspulse.Frame) {
         // echo back to the whole room
         srv.Broadcast(connection.RoomID(), f)
     }),
-    server.WithOnDisconnect(func(connection server.Connection, err error) {
+    wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
         log.Printf("disconnected: %s", connection.ID())
     }),
-    server.WithHeartbeat(10*time.Second, 30*time.Second),
-    server.WithResumeWindow(30*time.Second),
+    wspulse.WithHeartbeat(10*time.Second, 30*time.Second),
+    wspulse.WithResumeWindow(30*time.Second),
 )
 
 // Standard library
@@ -63,11 +63,11 @@ router.GET("/ws", func(c *gin.Context) {
 
 ```go
 // Send to a specific connection
-srv.Send(connectionID, server.Frame{Event: "sys", Payload: []byte(`{"event":"welcome"}`)})
+srv.Send(connectionID, wspulse.Frame{Event: "sys", Payload: []byte(`{"event":"welcome"}`)})
 
 // Broadcast to a room
 payload, _ := json.Marshal(myMessage)
-srv.Broadcast(roomID, server.Frame{Event: "msg", Payload: payload})
+srv.Broadcast(roomID, wspulse.Frame{Event: "msg", Payload: payload})
 
 // Kick a connection
 srv.Kick(connectionID)
@@ -78,11 +78,11 @@ connections := srv.GetConnections(roomID)
 
 ### Event Routing with `core/router`
 
-`core/router` provides Gin-style middleware and per-event handler dispatch. `server.Connection` satisfies `router.Connection` via structural subtyping — no adaptor needed.
+`core/router` provides Gin-style middleware and per-event handler dispatch. `wspulse.Connection` satisfies `router.Connection` via structural subtyping — no adaptor needed.
 
 ```go
 import (
-    "github.com/wspulse/server"
+    "github.com/wspulse/server" // package name: wspulse
     "github.com/wspulse/core/router"
 )
 
@@ -93,14 +93,14 @@ rtr.On("chat.message", func(c *router.Context) {
     srv.Broadcast(c.Connection.RoomID(), c.Frame)
 })
 rtr.On("chat.join", func(c *router.Context) {
-    welcome := server.Frame{Event: "chat.welcome", Payload: []byte(`"hello"`)}
+    welcome := wspulse.Frame{Event: "chat.welcome", Payload: []byte(`"hello"`)}
     _ = c.Connection.Send(welcome)
 })
 
-var srv server.Server
-srv = server.NewServer(
+var srv wspulse.Server
+srv = wspulse.NewServer(
     connectFunc,
-    server.WithOnMessage(func(conn server.Connection, f server.Frame) {
+    wspulse.WithOnMessage(func(conn wspulse.Connection, f wspulse.Frame) {
         rtr.Dispatch(conn, f)
     }),
 )
@@ -168,11 +168,11 @@ The value of `"event"` is `frame.Event` on the Go side, and is the key used to s
 
 ```go
 import (
-    "github.com/wspulse/server"
+    "github.com/wspulse/server" // package name: wspulse
     "github.com/wspulse/core/router"
 )
 
-var srv server.Server
+var srv wspulse.Server
 
 r := router.New()
 r.Use(router.Recovery())
@@ -184,7 +184,7 @@ r.Use(func(c *router.Context) {
 
 // matches frames where "event" == "chat.message"
 r.On("chat.message", func(c *router.Context) {
-    srv.Broadcast(c.Connection.RoomID(), server.Frame{
+    srv.Broadcast(c.Connection.RoomID(), wspulse.Frame{
         Event:   "chat.message",
         Payload: c.Frame.Payload,
     })
@@ -192,12 +192,12 @@ r.On("chat.message", func(c *router.Context) {
 
 // matches frames where "event" == "ping"
 r.On("ping", func(c *router.Context) {
-    _ = c.Connection.Send(server.Frame{Event: "pong"})
+    _ = c.Connection.Send(wspulse.Frame{Event: "pong"})
 })
 
-srv = server.NewServer(
+srv = wspulse.NewServer(
     connectFn,
-    server.WithOnMessage(func(conn server.Connection, f server.Frame) {
+    wspulse.WithOnMessage(func(conn wspulse.Connection, f wspulse.Frame) {
         r.Dispatch(conn, f)
     }),
 )
