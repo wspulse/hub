@@ -22,7 +22,7 @@ lint: ## Run go vet and golangci-lint
 
 fmt: ## Format source files
 	@gofmt -w .
-	@goimports -w . 2>/dev/null || true
+	@go run golang.org/x/tools/cmd/goimports@latest -local github.com/wspulse -w .
 
 check: ## Run fmt, lint, and test (pre-commit gate)
 	@echo "── fmt ──"
