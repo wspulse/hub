@@ -213,11 +213,21 @@ See [doc/protocol.md](doc/protocol.md) for the JSON frame format.
 
 See [doc/internals.md](doc/internals.md) for the goroutine model, heartbeat mechanism, backpressure, and session resumption implementation details.
 
+## Development
+
+```bash
+make fmt        # auto-format source files (gofmt + goimports)
+make check      # validate format, lint, test with race detector (pre-commit gate)
+make test       # go test -race -count=3 ./...
+make test-cover # go test with coverage report → coverage.html
+make bench      # run benchmarks with memory allocation stats
+make tidy       # go mod tidy (GOWORK=off)
+make clean      # remove build artifacts and test cache
+```
+
 ---
 
-## Related Modules
-
-| Module                                                    | Description             |
+## Related Modules             |
 | --------------------------------------------------------- | ----------------------- |
 | [wspulse/core](https://github.com/wspulse/core)           | Shared types and codecs |
 | [wspulse/client-go](https://github.com/wspulse/client-go) | Go WebSocket client     |
