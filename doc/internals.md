@@ -88,6 +88,9 @@ server.NewServer(connect,
 
 3. **Client-side Pong** — Standard WebSocket implementations (browsers, Gorilla)
    reply to Ping automatically; the application layer does not need to handle this.
+   Note: native clients (Go, Node.js) **also** send their own independent Ping to
+   the server for client-side dead-connection detection. The server auto-replies
+   to these via gorilla's default `PingHandler`. See the protocol spec for details.
 
 4. **Timeout disconnect** — If no Pong arrives within `pongWait`, `ReadMessage()`
    returns an `i/o timeout` error. `readPump` exits, unregisters the connection
