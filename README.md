@@ -1,5 +1,9 @@
 # wspulse/server
 
+[![CI](https://github.com/wspulse/server/actions/workflows/ci.yml/badge.svg)](https://github.com/wspulse/server/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/wspulse/server.svg)](https://pkg.go.dev/github.com/wspulse/server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A minimal, production-ready WebSocket server for Go with room-based routing, session resumption, and pluggable codecs.
 
 **Status:** v0 — API is being stabilized. Module path: `github.com/wspulse/server`. Package name: `wspulse`.
