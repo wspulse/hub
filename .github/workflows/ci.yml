@@ -18,7 +18,7 @@ jobs:
   check:
     uses: wspulse/.github/.github/workflows/go-check.yml@main
 
-  integration:
+  test-integration:
     uses: wspulse/.github/.github/workflows/go-integration.yml@main
     needs: [check]
     if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
