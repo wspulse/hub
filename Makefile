@@ -33,12 +33,12 @@ check: ## Run fmt-check, lint, unit tests (set INCLUDE_INTEGRATION=1 to also run
 	@test -z "$$(go run golang.org/x/tools/cmd/goimports@latest -local github.com/wspulse -l .)" || (echo "import issues — run 'make fmt'"; exit 1)
 	@echo "── lint ──"
 	@$(MAKE) --no-print-directory lint
+	@echo "── test ──"
+	@$(MAKE) --no-print-directory test
 	@if [ "$$INCLUDE_INTEGRATION" = "1" ]; then \
-		echo "── test (unit + integration) ──"; \
+		echo "── test-integration ──"; \
 		$(MAKE) --no-print-directory test-integration; \
 	else \
-		echo "── test ──"; \
-		$(MAKE) --no-print-directory test; \
 		echo "── test-integration skipped (set INCLUDE_INTEGRATION=1 to enable) ──"; \
 	fi
 	@echo "── all passed ──"
