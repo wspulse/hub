@@ -17,3 +17,8 @@ on:
 jobs:
   ci:
     uses: wspulse/.github/.github/workflows/go-ci.yml@main
+
+  test-integration:
+    uses: wspulse/.github/.github/workflows/go-ci-integration.yml@main
+    needs: [ci]
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
