@@ -7,3 +7,6 @@ on:
 jobs:
   assign:
     uses: wspulse/.github/.github/workflows/auto-assign.yml@main
+    permissions:
+      issues: write
+      pull-requests: write
