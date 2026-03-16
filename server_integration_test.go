@@ -43,6 +43,7 @@ func dialTestServerRaw(t *testing.T, srv wspulse.Server) (*websocket.Conn, *http
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
 	}
+	t.Cleanup(func() { _ = c.Close() })
 	return c, ts
 }
 
@@ -434,6 +435,7 @@ func TestServer_CloseWhileConnecting_NoLeak(t *testing.T) {
 			return "room", "", nil
 		},
 	)
+	t.Cleanup(srv.Close)
 
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)

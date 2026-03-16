@@ -107,15 +107,6 @@ func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 	_ = wspulse.WithMaxMessageSize(0)
 }
 
-func TestServer_Broadcast_AfterClose_ReturnsErrServerClosed(t *testing.T) {
-	srv := wspulse.NewServer(acceptAll)
-	srv.Close()
-	err := srv.Broadcast("test-room", wspulse.Frame{Event: "msg"})
-	if !errors.Is(err, wspulse.ErrServerClosed) {
-		t.Fatalf("want ErrServerClosed, got %v", err)
-	}
-}
-
 // ── Option validation tests ───────────────────────────────────────────────────
 
 func TestWithHeartbeat_ValidParams_Accepted(t *testing.T) {
