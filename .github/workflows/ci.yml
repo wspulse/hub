@@ -15,10 +15,10 @@ on:
       - '.github/instructions/**'
 
 jobs:
-  ci:
-    uses: wspulse/.github/.github/workflows/go-ci.yml@main
+  check:
+    uses: wspulse/.github/.github/workflows/go-check.yml@main
 
-  test-integration:
-    uses: wspulse/.github/.github/workflows/go-ci-integration.yml@main
-    needs: [ci]
+  integration:
+    uses: wspulse/.github/.github/workflows/go-integration.yml@main
+    needs: [check]
     if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
