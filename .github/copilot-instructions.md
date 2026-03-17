@@ -18,13 +18,14 @@ wspulse/server is a **minimal, production-ready WebSocket server library** for G
 ## Development Workflow
 
 ```bash
-make fmt        # format (gofmt + goimports)
-make lint       # vet + golangci-lint
-make test       # race detector, count=3
-make check      # fmt + lint + test (pre-commit gate)
-make bench      # benchmarks with memory stats
-make test-cover # coverage report → coverage.html
-make tidy       # tidy module dependencies
+make fmt              # format (gofmt + goimports)
+make lint             # vet + golangci-lint
+make test             # unit tests with race detector
+make test-integration # all tests (unit + integration) with race detector
+make check            # fmt + lint + unit test (pre-commit gate)
+make bench            # benchmarks with memory stats
+make test-cover       # all tests with coverage report → coverage.html
+make tidy             # tidy module dependencies
 ```
 
 ## Conventions
@@ -46,6 +47,7 @@ make tidy       # tidy module dependencies
     - `fix/<name>` — quick fix (e.g. config, docs, CI)
     - CI triggers on all four branch prefixes and on PRs targeting `main`/`develop`. Tags do **not** trigger CI (the tag is created after CI already passed). Open a PR into `develop`; `develop` requires status checks to pass.
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
+  - **Unit vs integration**: integration tests (requiring a WebSocket connection) use `//go:build integration` and live in `*_integration_test.go` files. `make check` runs unit tests only by default; set `INCLUDE_INTEGRATION=1` to include integration tests.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
   - **Benchmarks**: changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Verify with `make bench`.
 - **API compatibility**:
