@@ -1,12 +1,13 @@
-name: Auto Assign
+name: On PR Opened
 
 on:
   pull_request:
     types: [opened]
 
 jobs:
-  assign:
-    uses: wspulse/.github/.github/workflows/auto-assign.yml@main
+  setup:
+    uses: wspulse/.github/.github/workflows/on-pr-opened.yml@main
     permissions:
       issues: write
       pull-requests: write
+
