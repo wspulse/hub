@@ -9,7 +9,9 @@ changelog:
     - title: Refactoring
       labels:
         - refactor
+    - title: Maintenance
+      labels:
+        - chore
     - title: Other Changes
       labels:
         - "*"
-
