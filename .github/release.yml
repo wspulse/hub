@@ -2,11 +2,11 @@ changelog:
   categories:
     - title: Features
       labels:
-        - feat
+        - feature
     - title: Bug Fixes
       labels:
         - fix
-    - title: Refactoring
+    - title: Refactor
       labels:
         - refactor
     - title: Maintenance
