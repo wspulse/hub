@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, 'feature/**', 'refactor/**', 'bugfix/**', 'fix/**']
+    branches: [main, develop, 'feat/**', 'feature/**', 'refactor/**', 'bugfix/**', 'fix/**', 'chore/**']
     paths-ignore:
       - '**.md'
       - 'LICENSE'
