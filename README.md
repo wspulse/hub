@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/wspulse/server/actions/workflows/ci.yml/badge.svg)](https://github.com/wspulse/server/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/wspulse/server.svg)](https://pkg.go.dev/github.com/wspulse/server)
+[![Go](https://img.shields.io/badge/Go-1.26-blue.svg?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A minimal, production-ready WebSocket server for Go with room-based routing, session resumption, and pluggable codecs.
