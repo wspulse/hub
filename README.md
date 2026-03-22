@@ -208,16 +208,6 @@ srv = wspulse.NewServer(
 )
 ```
 
----
-
-## Wire Protocol
-
-See [doc/protocol.md](doc/protocol.md) for the JSON frame format.
-
-## Internals
-
-See [doc/internals.md](doc/internals.md) for the goroutine model, heartbeat mechanism, backpressure, and session resumption implementation details.
-
 ## Development
 
 ```bash
@@ -236,3 +226,20 @@ make clean      # remove build artifacts and test cache
 | --------------------------------------------------------- | ----------------------- |
 | [wspulse/core](https://github.com/wspulse/core)           | Shared types and codecs |
 | [wspulse/client-go](https://github.com/wspulse/client-go) | Go WebSocket client     |
+
+---
+
+## Contract & Protocol
+
+| Document                  | Description                                                         |
+| ------------------------- | ------------------------------------------------------------------- |
+| [Wire Protocol][proto]    | Frame format, heartbeat, session resumption                         |
+| [Server Interface][s-if]  | Public API surface contract (Server, Connection, options)           |
+| [Server Behaviour][s-bh]  | Behavioural guarantees (hub serialization, callbacks, resume, kick) |
+| [Server Tests][s-ts]      | Integration test scenarios                                          |
+| [Internals](doc/internals.md) | Goroutine model, backpressure, teardown sequence               |
+
+[proto]: https://github.com/wspulse/.github/blob/main/doc/protocol.md
+[s-if]: https://github.com/wspulse/.github/blob/main/doc/contracts/server/interface.md
+[s-bh]: https://github.com/wspulse/.github/blob/main/doc/contracts/server/behaviour.md
+[s-ts]: https://github.com/wspulse/.github/blob/main/doc/contracts/server/integration-test-scenarios.md

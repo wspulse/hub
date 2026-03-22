@@ -12,8 +12,8 @@ wspulse/server is a **minimal, production-ready WebSocket server library** for G
 - **`options.go`** — `ServerOption` functional options, `ConnectFunc` type, and all `WithXxx` option builders.
 - **`resume.go`** — Ring buffer for buffering frames during temporary disconnects (session resumption).
 - **`errors.go`** — Server-only sentinel errors: `ErrConnectionNotFound`, `ErrDuplicateConnectionID`, `ErrServerClosed`.
-- **`doc/protocol.md`** — Wire protocol specification.
 - **`doc/internals.md`** — Internal architecture documentation.
+- Wire protocol specification has moved to the [`.github` repo](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 
 ## Development Workflow
 
@@ -60,7 +60,7 @@ make tidy             # tidy module dependencies
 
 ## Critical Rules
 
-1. **Read before write** — always read the target file, `doc/protocol.md`, and `doc/internals.md` fully before editing.
+1. **Read before write** — always read the target file and `doc/internals.md` fully before editing. For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 2. **Minimal changes** — one concern per edit; no drive-by refactors.
 3. **No hardcoded secrets** — all configuration via environment variables.
 4. **Hub serialization** — all session state mutations must go through the hub's event loop. Never mutate session state from outside the hub goroutine.

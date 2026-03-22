@@ -19,8 +19,8 @@ making any changes.
 - `options.go` — `ServerOption` builders
 - `resume.go` — ring buffer for session resumption
 - `errors.go` — sentinel errors
-- `doc/protocol.md` — wire protocol spec
 - `doc/internals.md` — internal architecture
+- Wire protocol spec: [`.github/doc/protocol.md`](https://github.com/wspulse/.github/blob/main/doc/protocol.md)
 
 **Pre-commit gate**: `make check` (fmt → lint → test)
 
@@ -28,8 +28,8 @@ making any changes.
 
 ## Non-negotiable Rules
 
-1. **Read before write** — read the target file + `doc/protocol.md` +
-   `doc/internals.md` before any edit.
+1. **Read before write** — read the target file + `doc/internals.md` before any edit.
+   For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 2. **Hub serialization** — all session state mutations go through the hub's
    event loop. Never mutate session state from outside the hub goroutine.
 3. **Goroutine lifecycle** — every goroutine must have an explicit exit
