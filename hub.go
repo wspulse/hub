@@ -136,13 +136,14 @@ func (h *hub) handleRegister(message registerMessage) {
 			// as stale and ignored by handleGraceExpired.
 			existing.cancelGraceTimer()
 
-			existing.attachWS(message.transport, h)
+			var onResume func()
+			if fn := h.config.onTransportRestore; fn != nil {
+				onResume = func() { fn(existing) }
+			}
+			existing.attachWS(message.transport, h, onResume)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
-			if fn := h.config.onTransportRestore; fn != nil {
-				go fn(existing)
-			}
 			return
 
 		case stateConnected:
@@ -185,7 +186,7 @@ func (h *hub) handleRegister(message registerMessage) {
 	h.connectionsByID[message.connectionID] = newSession
 	h.mu.Unlock()
 
-	newSession.attachWS(message.transport, h)
+	newSession.attachWS(message.transport, h, nil)
 
 	h.config.logger.Debug("wspulse: session connected",
 		zap.String("conn_id", message.connectionID),

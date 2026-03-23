@@ -96,7 +96,7 @@ func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
 
 // WithOnTransportRestore registers a callback invoked when a suspended session
 // resumes after a client reconnects within the resume window. This does not
-// fire when resumeWindow is not configured. The callback runs in a separate goroutine.
+// fire when resumeWindow is 0. The callback runs in a separate goroutine.
 func WithOnTransportRestore(fn func(Connection)) ServerOption {
 	return func(c *serverConfig) { c.onTransportRestore = fn }
 }

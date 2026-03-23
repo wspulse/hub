@@ -211,6 +211,11 @@ func (s *session) Close() error {
 // buffered frames are drained into the send channel before the new
 // writePump starts.
 //
+// onResumeComplete, if non-nil, is invoked in a separate goroutine after
+// the resume drain completes and both pumps have started. This ensures
+// the callback fires only when the session is in stateConnected with
+// active pumps. Pass nil for new (non-resume) sessions.
+//
 // The method returns immediately without blocking the caller (the hub's
 // event loop). A transition goroutine waits for the old writePump to exit,
 // drains the resume buffer, and then starts both readPump and writePump.
@@ -231,7 +236,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the hub's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport *websocket.Conn, h *hub) {
+func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump pair if still running.
@@ -349,6 +354,10 @@ func (s *session) attachWS(transport *websocket.Conn, h *hub) {
 
 		go s.readPump(transport, h)
 		go s.writePump(transport, pumpQuit, pumpDone)
+
+		if onResumeComplete != nil {
+			go onResumeComplete()
+		}
 	}()
 }
 

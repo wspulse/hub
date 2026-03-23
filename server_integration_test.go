@@ -3250,3 +3250,77 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 		t.Fatal("timed out waiting for message event")
 	}
 }
+
+// TestOnTransportRestore_FiresAfterStateConnected verifies that OnTransportRestore
+// fires only after the session has transitioned to stateConnected (pumps running).
+// If the callback fires while the session is still suspended, Send() will buffer
+// to the resume buffer (which has already been drained), and the frame will never
+// reach the client.
+func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			// Send a frame from within the callback. If this fires
+			// before stateConnected, the frame goes to the resume
+			// buffer (already drained) and never reaches the client.
+			_ = connection.Send(wspulse.Frame{
+				Event:   "from-restore",
+				Payload: []byte(`"hello"`),
+			})
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with same connectionID.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	// The client must receive the frame sent from OnTransportRestore.
+	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, message, err := c2.ReadMessage()
+	if err != nil {
+		t.Fatalf("ReadMessage failed (frame from OnTransportRestore not received): %v", err)
+	}
+	f, err := wspulse.JSONCodec.Decode(message)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if f.Event != "from-restore" {
+		t.Errorf("event: want %q, got %q", "from-restore", f.Event)
+	}
+}
