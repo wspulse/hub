@@ -2958,3 +2958,295 @@ func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
 		t.Fatalf("want %d onDisconnect within 3s, got %d (delayed by grace window?)", count, got)
 	}
 }
+
+// ── Transport callback tests ──────────────────────────────────────────────────
+
+func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	dropped := make(chan wspulse.Connection, 1)
+	droppedErr := make(chan error, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			dropped <- connection
+			droppedErr <- err
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	_ = c.Close()
+
+	select {
+	case conn := <-dropped:
+		if conn.ID() != "test-connection" {
+			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// err may be nil for a normal closure (CloseNormalClosure).
+	select {
+	case <-droppedErr:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop error")
+	}
+}
+
+func TestOnTransportRestore_FiresOnResume(t *testing.T) {
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+	restored := make(chan wspulse.Connection, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			restored <- connection
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with same connectionID.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	select {
+	case conn := <-restored:
+		if conn.ID() != "test-connection" {
+			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportRestore")
+	}
+}
+
+func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
+	connected := make(chan struct{}, 1)
+	disconnected := make(chan struct{}, 1)
+	var dropFired atomic.Bool
+	var restoreFired atomic.Bool
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		// No WithResumeWindow — default is 0.
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			select {
+			case disconnected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			dropFired.Store(true)
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			restoreFired.Store(true)
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	_ = c.Close()
+
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnDisconnect")
+	}
+
+	// Give callbacks a moment to fire (they should not).
+	time.Sleep(200 * time.Millisecond)
+
+	if dropFired.Load() {
+		t.Error("OnTransportDrop fired without resume window")
+	}
+	if restoreFired.Load() {
+		t.Error("OnTransportRestore fired without resume window")
+	}
+}
+
+func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
+	events := make(chan string, 4)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(500*time.Millisecond),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			events <- "connect"
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			events <- "drop"
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			events <- "disconnect"
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case e := <-events:
+		if e != "connect" {
+			t.Fatalf("first event: want %q, got %q", "connect", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect event")
+	}
+
+	_ = c.Close()
+
+	// Expect: drop fires first, then disconnect fires after grace expires.
+	select {
+	case e := <-events:
+		if e != "drop" {
+			t.Fatalf("second event: want %q, got %q", "drop", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for drop event")
+	}
+
+	select {
+	case e := <-events:
+		if e != "disconnect" {
+			t.Fatalf("third event: want %q, got %q", "disconnect", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for disconnect event")
+	}
+}
+
+func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
+	events := make(chan string, 4)
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			events <- "restore"
+		}),
+		wspulse.WithOnMessage(func(connection wspulse.Connection, f wspulse.Frame) {
+			events <- "message"
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	// Wait for restore event first.
+	select {
+	case e := <-events:
+		if e != "restore" {
+			t.Fatalf("first event after reconnect: want %q, got %q", "restore", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for restore event")
+	}
+
+	// Now send a message on the new transport.
+	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
+	if err := c2.WriteMessage(websocket.TextMessage, encoded); err != nil {
+		t.Fatalf("WriteMessage failed: %v", err)
+	}
+
+	select {
+	case e := <-events:
+		if e != "message" {
+			t.Fatalf("second event after reconnect: want %q, got %q", "message", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for message event")
+	}
+}

@@ -289,6 +289,20 @@ func TestServer_Kick_AfterClose(t *testing.T) {
 	}
 }
 
+func TestWithOnTransportDrop_AcceptsNil(t *testing.T) {
+	srv := wspulse.NewServer(acceptAll,
+		wspulse.WithOnTransportDrop(nil),
+	)
+	t.Cleanup(srv.Close)
+}
+
+func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
+	srv := wspulse.NewServer(acceptAll,
+		wspulse.WithOnTransportRestore(nil),
+	)
+	t.Cleanup(srv.Close)
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

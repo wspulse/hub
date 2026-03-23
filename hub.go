@@ -140,6 +140,9 @@ func (h *hub) handleRegister(message registerMessage) {
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
+			if fn := h.config.onTransportRestore; fn != nil {
+				go fn(existing)
+			}
 			return
 
 		case stateConnected:
@@ -288,6 +291,9 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			zap.String("conn_id", target.id),
 			zap.Duration("resume_window", h.config.resumeWindow),
 		)
+		if fn := h.config.onTransportDrop; fn != nil {
+			go fn(target, message.err)
+		}
 		return
 	}
 

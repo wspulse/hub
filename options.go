@@ -29,19 +29,21 @@ type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 type ServerOption func(*serverConfig) //nolint:revive
 
 type serverConfig struct {
-	connect        ConnectFunc
-	onConnect      func(Connection)
-	onMessage      func(Connection, Frame)
-	onDisconnect   func(Connection, error)
-	pingPeriod     time.Duration
-	pongWait       time.Duration
-	writeWait      time.Duration
-	maxMessageSize int64
-	sendBufferSize int
-	resumeWindow   time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
-	codec          Codec
-	checkOrigin    func(r *http.Request) bool
-	logger         *zap.Logger
+	connect            ConnectFunc
+	onConnect          func(Connection)
+	onMessage          func(Connection, Frame)
+	onDisconnect       func(Connection, error)
+	onTransportDrop    func(Connection, error)
+	onTransportRestore func(Connection)
+	pingPeriod         time.Duration
+	pongWait           time.Duration
+	writeWait          time.Duration
+	maxMessageSize     int64
+	sendBufferSize     int
+	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
+	codec              Codec
+	checkOrigin        func(r *http.Request) bool
+	logger             *zap.Logger
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -83,6 +85,20 @@ func WithOnMessage(fn func(Connection, Frame)) ServerOption {
 // expires without reconnection (not on every transport drop).
 func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 	return func(c *serverConfig) { c.onDisconnect = fn }
+}
+
+// WithOnTransportDrop registers a callback invoked when a connection's
+// transport dies and the session enters the suspended state (resumeWindow > 0).
+// This does not fire when resumeWindow is 0. The callback runs in a separate goroutine.
+func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
+	return func(c *serverConfig) { c.onTransportDrop = fn }
+}
+
+// WithOnTransportRestore registers a callback invoked when a suspended session
+// resumes after a client reconnects within the resume window. This does not
+// fire when resumeWindow is not configured. The callback runs in a separate goroutine.
+func WithOnTransportRestore(fn func(Connection)) ServerOption {
+	return func(c *serverConfig) { c.onTransportRestore = fn }
 }
 
 // WithHeartbeat configures Ping/Pong heartbeat intervals.
