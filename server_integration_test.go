@@ -3070,8 +3070,8 @@ func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	var dropFired atomic.Bool
-	var restoreFired atomic.Bool
+	dropFired := make(chan struct{}, 1)
+	restoreFired := make(chan struct{}, 1)
 
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -3089,10 +3089,16 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 			}
 		}),
 		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
-			dropFired.Store(true)
+			select {
+			case dropFired <- struct{}{}:
+			default:
+			}
 		}),
 		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
-			restoreFired.Store(true)
+			select {
+			case restoreFired <- struct{}{}:
+			default:
+			}
 		}),
 	)
 	t.Cleanup(srv.Close)
@@ -3112,14 +3118,19 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 		t.Fatal("timed out waiting for OnDisconnect")
 	}
 
-	// Give callbacks a moment to fire (they should not).
-	time.Sleep(200 * time.Millisecond)
-
-	if dropFired.Load() {
+	// Verify transport callbacks did not fire (no resume window configured).
+	select {
+	case <-dropFired:
 		t.Error("OnTransportDrop fired without resume window")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire.
 	}
-	if restoreFired.Load() {
+
+	select {
+	case <-restoreFired:
 		t.Error("OnTransportRestore fired without resume window")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire.
 	}
 }
 
@@ -3322,5 +3333,76 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	}
 	if f.Event != "from-restore" {
 		t.Errorf("event: want %q, got %q", "from-restore", f.Event)
+	}
+}
+
+func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
+	connected := make(chan wspulse.Connection, 2)
+	dropped := make(chan struct{}, 1)
+	restoreFired := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- connection:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			// Close the session from the drop callback. This sets
+			// state = stateClosed while the session is still suspended.
+			// If the reconnect arrives before the hub processes the
+			// graceExpired message, handleRegister sees stateSuspended
+			// and calls attachWS — the transition goroutine must check
+			// state before firing onResumeComplete.
+			_ = connection.Close()
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			select {
+			case restoreFired <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	// Drop transport → session suspends, OnTransportDrop fires and calls Close().
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with the same connectionID immediately. Depending on
+	// hub event ordering, the old closed session may or may not still
+	// be registered. Either way, OnTransportRestore must NOT fire for
+	// a session that was closed.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	select {
+	case <-restoreFired:
+		t.Fatal("OnTransportRestore fired on a closed session")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire for the closed session.
 	}
 }

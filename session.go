@@ -356,7 +356,12 @@ func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete f
 		go s.writePump(transport, pumpQuit, pumpDone)
 
 		if onResumeComplete != nil {
-			go onResumeComplete()
+			s.mu.Lock()
+			shouldCall := s.state == stateConnected && s.transport == transport
+			s.mu.Unlock()
+			if shouldCall {
+				go onResumeComplete()
+			}
 		}
 	}()
 }
