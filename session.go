@@ -468,7 +468,7 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 // pumpQuit is closed when this pump should stop (reconnect or session close).
 // pumpDone is closed on exit so callers can wait for this pump to finish.
 func (s *session) writePump(transport *websocket.Conn, pumpQuit, pumpDone chan struct{}) {
-	ticker := time.NewTicker(s.config.pingPeriod)
+	ticker := s.config.clock.NewTicker(s.config.pingPeriod)
 	defer func() {
 		ticker.Stop()
 		_ = transport.Close()

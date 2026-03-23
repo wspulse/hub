@@ -44,6 +44,7 @@ type serverConfig struct {
 	codec              Codec
 	checkOrigin        func(r *http.Request) bool
 	logger             *zap.Logger
+	clock              clock
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -58,6 +59,7 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 		codec:          JSONCodec,
 		checkOrigin:    func(*http.Request) bool { return true },
 		logger:         zap.NewNop(),
+		clock:          realClock{},
 	}
 }
 

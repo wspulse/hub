@@ -3,7 +3,6 @@ package wspulse
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -266,7 +265,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			)
 			return
 		}
-		timer := time.AfterFunc(h.config.resumeWindow, func() {
+		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
 			select {
 			case h.graceExpired <- graceExpiredMessage{session: target, epoch: epoch}:
 			case <-h.done:
