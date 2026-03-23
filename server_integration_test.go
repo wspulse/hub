@@ -1690,13 +1690,22 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	// Tests the handleGraceExpired stateClosed path: connection.Close()
 	// is called while suspended, then the grace timer fires.
 	connected := make(chan wspulse.Connection, 1)
+	dropped := make(chan struct{}, 1)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- connection:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -1713,14 +1722,19 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 
 	// Close transport → session suspends.
 	_ = c.Close()
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
 
 	// Application calls Close() on the Connection while suspended.
 	_ = connection.Close()
 
-	// Wait for grace timer to fire (1 second). handleGraceExpired will see
-	// stateClosed and clean up maps without calling Close again.
-	time.Sleep(1500 * time.Millisecond)
+	// Fire the grace timer. handleGraceExpired will see stateClosed
+	// and clean up maps without calling Close again.
+	fc.Fire(0)
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify session is fully cleaned up.
 	connections := srv.GetConnections("test-room")
@@ -1733,17 +1747,26 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 
 func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	// Connect, disconnect (suspend, timer start), reconnect (resume, epoch bump),
-	// disconnect again (new timer), let OLD timer fire (epoch mismatch → ignored),
+	// disconnect again (new timer), fire OLD timer (epoch mismatch → ignored),
 	// then reconnect again — session must still be alive.
 	connected := make(chan struct{}, 10)
 	disconnected := make(chan struct{}, 10)
+	dropped := make(chan struct{}, 10)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -1756,7 +1779,7 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	)
 	t.Cleanup(srv.Close)
 
-	// Cycle 1: connect → disconnect (suspend).
+	// Cycle 1: connect → disconnect (suspend). Timer 0 (epoch=1).
 	c1, ts := dialTestServerRaw(t, srv)
 	select {
 	case <-connected:
@@ -1764,9 +1787,13 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 		t.Fatal("timed out waiting for first connect")
 	}
 	_ = c1.Close()
-	time.Sleep(200 * time.Millisecond) // grace timer epoch=1 started
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first drop")
+	}
 
-	// Cycle 2: reconnect (resume, epoch bumped), disconnect again.
+	// Cycle 2: reconnect (resume, epoch bumped), disconnect again. Timer 1 (epoch=2).
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
@@ -1775,7 +1802,11 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	}
 	time.Sleep(200 * time.Millisecond)
 	_ = c2.Close()
-	time.Sleep(200 * time.Millisecond) // grace timer epoch=2 started
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for second drop")
+	}
 
 	// Cycle 3: reconnect again (resume, epoch bumped again).
 	c3, _, err := dialer.Dial(u, nil)
@@ -1783,10 +1814,12 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 		t.Fatalf("reconnect 2 failed: %v", err)
 	}
 	t.Cleanup(func() { _ = c3.Close() })
+	time.Sleep(200 * time.Millisecond)
 
-	// Wait for the old timers (epoch=1, epoch=2) to fire — both should be
-	// detected as stale and ignored.
-	time.Sleep(1200 * time.Millisecond)
+	// Fire old timers (epoch=1, epoch=2) — both should be detected as stale.
+	fc.Fire(0)
+	fc.Fire(1)
+	time.Sleep(50 * time.Millisecond)
 
 	// Session should still be alive.
 	select {
@@ -3226,10 +3259,12 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 
 func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	events := make(chan string, 4)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(500*time.Millisecond),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			events <- "connect"
 		}),
@@ -3263,6 +3298,8 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for drop event")
 	}
+
+	fc.Fire(0)
 
 	select {
 	case e := <-events:
