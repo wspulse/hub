@@ -14,7 +14,6 @@ const (
 	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
-	maxResumeWindow  = 3 * time.Minute  // WithResumeWindow upper bound
 )
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
@@ -194,13 +193,10 @@ func WithLogger(l *zap.Logger) ServerOption {
 // drops, the session is suspended for d before firing OnDisconnect. If the
 // same connectionID reconnects within that period, the session resumes
 // transparently.
-// Valid range: 0 (disabled) … 3m. Default is 0 (OnDisconnect fires immediately).
+// Valid range: 0 (disabled) … no upper limit. Default is 0 (OnDisconnect fires immediately).
 func WithResumeWindow(d time.Duration) ServerOption {
 	if d < 0 {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
-	}
-	if d > maxResumeWindow {
-		panic("wspulse: WithResumeWindow: duration exceeds maximum (3m)")
 	}
 	return func(c *serverConfig) { c.resumeWindow = d }
 }

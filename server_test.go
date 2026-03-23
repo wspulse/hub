@@ -232,14 +232,12 @@ func TestWithResumeWindow_Negative_Panics(t *testing.T) {
 	_ = wspulse.WithResumeWindow(-time.Second)
 }
 
-func TestWithResumeWindow_ExceedsMax_Panics(t *testing.T) {
+func TestWithResumeWindow_LargeValue_Accepted(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for resume window > 3m")
-		}
-	}()
-	_ = wspulse.WithResumeWindow(3*time.Minute + time.Second)
+	srv := wspulse.NewServer(acceptAll,
+		wspulse.WithResumeWindow(10*time.Minute),
+	)
+	srv.Close()
 }
 
 func TestWithCodec_ValidCodec_Accepted(t *testing.T) {
