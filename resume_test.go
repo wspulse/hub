@@ -5,6 +5,7 @@ import (
 )
 
 func TestRingBuffer_PushAndDrain(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(4)
 
 	rb.Push([]byte("a"))
@@ -24,6 +25,7 @@ func TestRingBuffer_PushAndDrain(t *testing.T) {
 }
 
 func TestRingBuffer_DrainClearsBuffer(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(4)
 	rb.Push([]byte("x"))
 	rb.Drain()
@@ -35,6 +37,7 @@ func TestRingBuffer_DrainClearsBuffer(t *testing.T) {
 }
 
 func TestRingBuffer_Wraparound(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(3)
 
 	rb.Push([]byte("1"))
@@ -55,6 +58,7 @@ func TestRingBuffer_Wraparound(t *testing.T) {
 }
 
 func TestRingBuffer_Len(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(4)
 	if rb.Len() != 0 {
 		t.Fatalf("empty buffer Len: want 0, got %d", rb.Len())
@@ -67,6 +71,7 @@ func TestRingBuffer_Len(t *testing.T) {
 }
 
 func TestRingBuffer_SingleCapacity(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(1)
 	rb.Push([]byte("first"))
 	rb.Push([]byte("second"))
@@ -81,6 +86,7 @@ func TestRingBuffer_SingleCapacity(t *testing.T) {
 }
 
 func TestRingBuffer_ExactCapacity(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(3)
 	rb.Push([]byte("a"))
 	rb.Push([]byte("b"))
@@ -99,6 +105,7 @@ func TestRingBuffer_ExactCapacity(t *testing.T) {
 }
 
 func TestRingBuffer_LenAfterWraparound(t *testing.T) {
+	t.Parallel()
 	rb := newRingBuffer(2)
 	rb.Push([]byte("1"))
 	rb.Push([]byte("2"))
