@@ -14,7 +14,6 @@ const (
 	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
-	maxResumeWindow  = 3 * time.Minute  // WithResumeWindow upper bound
 )
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
@@ -29,19 +28,22 @@ type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 type ServerOption func(*serverConfig) //nolint:revive
 
 type serverConfig struct {
-	connect        ConnectFunc
-	onConnect      func(Connection)
-	onMessage      func(Connection, Frame)
-	onDisconnect   func(Connection, error)
-	pingPeriod     time.Duration
-	pongWait       time.Duration
-	writeWait      time.Duration
-	maxMessageSize int64
-	sendBufferSize int
-	resumeWindow   time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
-	codec          Codec
-	checkOrigin    func(r *http.Request) bool
-	logger         *zap.Logger
+	connect            ConnectFunc
+	onConnect          func(Connection)
+	onMessage          func(Connection, Frame)
+	onDisconnect       func(Connection, error)
+	onTransportDrop    func(Connection, error)
+	onTransportRestore func(Connection)
+	pingPeriod         time.Duration
+	pongWait           time.Duration
+	writeWait          time.Duration
+	maxMessageSize     int64
+	sendBufferSize     int
+	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
+	codec              Codec
+	checkOrigin        func(r *http.Request) bool
+	logger             *zap.Logger
+	clock              clock
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -56,6 +58,7 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 		codec:          JSONCodec,
 		checkOrigin:    func(*http.Request) bool { return true },
 		logger:         zap.NewNop(),
+		clock:          realClock{},
 	}
 }
 
@@ -83,6 +86,43 @@ func WithOnMessage(fn func(Connection, Frame)) ServerOption {
 // expires without reconnection (not on every transport drop).
 func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 	return func(c *serverConfig) { c.onDisconnect = fn }
+}
+
+// WithOnTransportDrop registers a callback invoked when a connection's
+// underlying WebSocket transport dies (network drop, read timeout, or peer
+// close) and the session enters the suspended state because resumeWindow > 0.
+//
+// The error parameter carries the cause of the transport failure when available
+// (e.g. an i/o timeout from a missed Pong, or a close frame from the peer).
+// For a normal or expected close, err may be nil, so callback implementations
+// must not assume it is always non-nil.
+//
+// This callback does NOT fire when:
+//   - resumeWindow is 0 (OnDisconnect fires directly instead).
+//   - the connection is removed via Kick() or Connection.Close()
+//     (OnDisconnect fires directly instead).
+//
+// The callback runs in a separate goroutine; it must be safe for concurrent use.
+func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
+	return func(c *serverConfig) { c.onTransportDrop = fn }
+}
+
+// WithOnTransportRestore registers a callback invoked when a suspended session
+// resumes after a client reconnects with the same connectionID within the
+// resume window.
+//
+// When this fires, OnConnect and OnDisconnect are NOT called — the session
+// continues as if the transport had never dropped. Buffered frames are replayed
+// to the new transport before the callback is invoked.
+//
+// This callback does NOT fire when:
+//   - resumeWindow is 0 (session resumption is disabled).
+//   - the resume window expires before the client reconnects
+//     (OnDisconnect fires instead).
+//
+// The callback runs in a separate goroutine; it must be safe for concurrent use.
+func WithOnTransportRestore(fn func(Connection)) ServerOption {
+	return func(c *serverConfig) { c.onTransportRestore = fn }
 }
 
 // WithHeartbeat configures Ping/Pong heartbeat intervals.
@@ -176,13 +216,10 @@ func WithLogger(l *zap.Logger) ServerOption {
 // drops, the session is suspended for d before firing OnDisconnect. If the
 // same connectionID reconnects within that period, the session resumes
 // transparently.
-// Valid range: 0 (disabled) … 3m. Default is 0 (OnDisconnect fires immediately).
+// Valid range: 0 (disabled) … no upper limit. Default is 0 (OnDisconnect fires immediately).
 func WithResumeWindow(d time.Duration) ServerOption {
 	if d < 0 {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
-	}
-	if d > maxResumeWindow {
-		panic("wspulse: WithResumeWindow: duration exceeds maximum (3m)")
 	}
 	return func(c *serverConfig) { c.resumeWindow = d }
 }

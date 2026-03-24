@@ -157,7 +157,7 @@ layer.
 
 > **Type:** `WithResumeWindow` accepts a `time.Duration`.
 > `WithResumeWindow(30 * time.Second)` means a 30-second grace window.
-> Valid range: 0 (disabled) … 3 minutes.
+> Valid range: 0 (disabled) … no upper limit.
 
 ### Architecture
 
@@ -173,12 +173,12 @@ swapped in silently.
 ```
 [*] → Connected : handleRegister creates session + transport
 
-Connected → Suspended : transport dies, resumeWindow > 0 (start timer, buffer frames)
+Connected → Suspended : transport dies, resumeWindow > 0 (start timer, buffer frames, onTransportDrop fires)
 Connected → Closed    : transport dies, resumeWindow == 0 (onDisconnect fires)
 Connected → Closed    : Kick() or Close() (onDisconnect fires)
 Connected → Closed    : duplicate connectionID arrives (old session kicked, onDisconnect fires with ErrDuplicateConnectionID; new session created)
 
-Suspended → Connected : same connectionID reconnect (cancel timer, replay buffer, no callback)
+Suspended → Connected : same connectionID reconnect (cancel timer, replay buffer, onTransportRestore fires)
 Suspended → Closed    : timer expires (onDisconnect fires, session destroyed)
 Suspended → Closed    : Connection.Close() called (cancel timer, onDisconnect fires immediately)
 Suspended → Closed    : Kick() or server.Close() (cancel timer, onDisconnect fires immediately)
@@ -192,6 +192,7 @@ Closed → [*]
 WS1 connection drops
   → WS1 sends transportDiedMessage(session, err) to Hub
   → Hub detaches WS1, starts resumeWindow timer
+  → go onTransportDrop(session, err)
   → Session state = suspended, frames buffered to ringBuffer
 
 WS2 client reconnects with same connectionID
@@ -199,7 +200,7 @@ WS2 client reconnects with same connectionID
   → Hub cancels timer
   → Hub attaches WS2, drains ringBuffer to send channel
   → Hub starts writePump(WS2) + readPump(WS2)
-  → No onConnect / onDisconnect fired
+  → onTransportRestore fires; no onConnect / onDisconnect fired
 ```
 
 ### Resume Buffer

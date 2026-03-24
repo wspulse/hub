@@ -4,6 +4,7 @@ package wspulse_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,6 +48,100 @@ func dialTestServerRaw(t *testing.T, srv wspulse.Server) (*websocket.Conn, *http
 	return c, ts
 }
 
+// ── Fake clock ───────────────────────────────────────────────────────────────
+//
+// fakeClock replaces both AfterFunc (grace timer) and NewTicker (heartbeat)
+// with controllable fakes. No real timers fire — tests drive time explicitly
+// via Fire (for AfterFunc callbacks) or by reading the returned ticker fields.
+
+type fakeClock struct {
+	mu      sync.Mutex
+	timers  []*fakeTimer
+	tickers []*fakeTicker
+}
+
+type fakeTimer struct {
+	d     time.Duration
+	fn    func()
+	timer *time.Timer
+}
+
+type fakeTicker struct {
+	d      time.Duration
+	ticker *time.Ticker
+}
+
+func newFakeClock() *fakeClock { return &fakeClock{} }
+
+// AfterFunc returns a stopped *time.Timer created via time.AfterFunc.
+// The timer will not fire on its own — tests must call fc.Fire(i) to
+// invoke the callback. Because time.AfterFunc is used (not time.NewTimer),
+// Reset(0) correctly re-invokes the callback, matching production semantics
+// (e.g. session.Close() calls graceTimer.Reset(0) to force immediate expiry).
+func (fc *fakeClock) AfterFunc(d time.Duration, f func()) *time.Timer {
+	t := time.AfterFunc(time.Hour, f)
+	t.Stop()
+	fc.mu.Lock()
+	fc.timers = append(fc.timers, &fakeTimer{d: d, fn: f, timer: t})
+	fc.mu.Unlock()
+	return t
+}
+
+// NewTicker returns a stopped ticker that will never fire on its own.
+// This prevents heartbeat pings from interfering with tests that use
+// fakeClock. The ticker is recorded for inspection if needed.
+func (fc *fakeClock) NewTicker(d time.Duration) *time.Ticker {
+	t := time.NewTicker(time.Hour)
+	t.Stop()
+	fc.mu.Lock()
+	fc.tickers = append(fc.tickers, &fakeTicker{d: d, ticker: t})
+	fc.mu.Unlock()
+	return t
+}
+
+// Fire executes the callback of the i-th registered AfterFunc (0-based).
+func (fc *fakeClock) Fire(i int) {
+	fc.mu.Lock()
+	if i >= len(fc.timers) {
+		fc.mu.Unlock()
+		panic(fmt.Sprintf("fakeClock.Fire(%d): only %d timers registered", i, len(fc.timers)))
+	}
+	ft := fc.timers[i]
+	fc.mu.Unlock()
+	ft.fn()
+}
+
+// Duration returns the duration passed to the i-th AfterFunc call.
+func (fc *fakeClock) Duration(i int) time.Duration {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if i >= len(fc.timers) {
+		panic(fmt.Sprintf("fakeClock.Duration(%d): only %d timers registered", i, len(fc.timers)))
+	}
+	return fc.timers[i].d
+}
+
+// TimerCount returns the number of registered AfterFunc timers.
+func (fc *fakeClock) TimerCount() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.timers)
+}
+
+// TickerCount returns the number of registered tickers.
+func (fc *fakeClock) TickerCount() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.tickers)
+}
+
+// Len returns the number of registered timers.
+func (fc *fakeClock) Len() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.timers)
+}
+
 // ── Codec error path tests ───────────────────────────────────────────────────
 
 // failingCodec is a Codec that always returns an error on Encode.
@@ -63,6 +158,7 @@ func (failingCodec) Decode(data []byte) (wspulse.Frame, error) {
 func (failingCodec) FrameType() int { return wspulse.TextMessage }
 
 func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
 		return "", "", errors.New("unauthorized")
 	})
@@ -80,6 +176,7 @@ func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
 }
 
 func TestServer_OnConnect_SendsFrame(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(
 		acceptAll,
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
@@ -103,6 +200,7 @@ func TestServer_OnConnect_SendsFrame(t *testing.T) {
 }
 
 func TestServer_OnMessage_CallbackFires(t *testing.T) {
+	t.Parallel()
 	received := make(chan wspulse.Frame, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -113,7 +211,10 @@ func TestServer_OnMessage_CallbackFires(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := dialTestServer(t, srv)
 	payload := []byte(`{"text":"ping from client"}`)
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: payload})
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: payload})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, encoded); err != nil {
 		t.Fatalf("WriteMessage failed: %v", err)
 	}
@@ -128,6 +229,7 @@ func TestServer_OnMessage_CallbackFires(t *testing.T) {
 }
 
 func TestServer_Broadcast_ReachesConnectedClient(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -164,6 +266,7 @@ func TestServer_Broadcast_ReachesConnectedClient(t *testing.T) {
 }
 
 func TestServer_OnDisconnect_CallbackFires(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{})
 	var once sync.Once
 	srv := wspulse.NewServer(
@@ -192,6 +295,7 @@ func TestServer_OnDisconnect_CallbackFires(t *testing.T) {
 }
 
 func TestServer_Send_DeliversFrameToConnection(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -228,6 +332,7 @@ func TestServer_Send_DeliversFrameToConnection(t *testing.T) {
 }
 
 func TestServer_Kick_ClosesConnection(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{})
 	var once sync.Once
@@ -261,6 +366,7 @@ func TestServer_Kick_ClosesConnection(t *testing.T) {
 }
 
 func TestServer_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -291,6 +397,7 @@ func TestServer_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
 }
 
 func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
+	t.Parallel()
 	var (
 		firstConnected  = make(chan struct{})
 		secondConnected = make(chan struct{})
@@ -375,6 +482,7 @@ func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 // ── Race & backpressure tests ─────────────────────────────────────────────────
 
 func TestServer_ConcurrentBroadcast_NoRace(t *testing.T) {
+	t.Parallel()
 	const workers = 8
 	const messagesPerWorker = 50
 
@@ -430,6 +538,7 @@ func TestServer_ConcurrentBroadcast_NoRace(t *testing.T) {
 }
 
 func TestServer_CloseWhileConnecting_NoLeak(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
@@ -464,6 +573,7 @@ func TestServer_CloseWhileConnecting_NoLeak(t *testing.T) {
 }
 
 func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
+	t.Parallel()
 	const bufferSize = 2
 	const totalBroadcasts = 200
 
@@ -528,6 +638,7 @@ func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
 }
 
 func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
+	t.Parallel()
 	const connectionCount = 3
 	var mu sync.Mutex
 	disconnected := make(map[string]error)
@@ -588,6 +699,7 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 }
 
 func TestServer_ReadPumpPanicRecovery(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -604,7 +716,10 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := dialTestServer(t, srv)
 
-	data, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	_ = c.WriteMessage(websocket.TextMessage, data)
 
 	select {
@@ -615,6 +730,7 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 }
 
 func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -655,6 +771,7 @@ func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T)
 }
 
 func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -683,6 +800,7 @@ func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
 }
 
 func TestServer_MultipleRooms_BroadcastIsolation(t *testing.T) {
+	t.Parallel()
 	connectionIndex := 0
 	var mu sync.Mutex
 	srv := wspulse.NewServer(
@@ -735,6 +853,7 @@ func TestServer_MultipleRooms_BroadcastIsolation(t *testing.T) {
 }
 
 func TestServer_GetConnections_EmptyAfterDisconnect(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -766,6 +885,7 @@ func TestServer_GetConnections_EmptyAfterDisconnect(t *testing.T) {
 }
 
 func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	connected := make(chan struct{}, 2)
 
@@ -835,15 +955,25 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 }
 
 func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	connected := make(chan struct{}, 1)
+	dropped := make(chan struct{}, 1)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(time.Second),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -866,6 +996,19 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	_ = c.Close()
 
 	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Verify the grace timer was registered with the correct duration.
+	if got := fc.Duration(0); got != 3*time.Minute {
+		t.Fatalf("grace timer duration: want %v, got %v", 3*time.Minute, got)
+	}
+
+	fc.Fire(0)
+
+	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for OnDisconnect after grace expiry")
@@ -873,6 +1016,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 }
 
 func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 2)
 
 	srv := wspulse.NewServer(
@@ -934,6 +1078,7 @@ func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
 }
 
 func TestServer_Resume_KickBypassesWindow(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	connected := make(chan struct{}, 1)
 
@@ -974,6 +1119,7 @@ func TestServer_Resume_KickBypassesWindow(t *testing.T) {
 }
 
 func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	connected := make(chan struct{}, 1)
 
@@ -1012,6 +1158,7 @@ func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 }
 
 func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	connected := make(chan struct{}, 1)
 
@@ -1052,6 +1199,7 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 }
 
 func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 2)
 
 	srv := wspulse.NewServer(
@@ -1100,6 +1248,7 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 // ── Race condition tests for resume ───────────────────────────────────────────
 
 func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(
 		acceptAll,
 		wspulse.WithResumeWindow(2*time.Second),
@@ -1123,6 +1272,7 @@ func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 }
 
 func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(
 		acceptAll,
 		wspulse.WithResumeWindow(2*time.Second),
@@ -1165,6 +1315,7 @@ func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 }
 
 func TestWithCheckOrigin_RejectsConnection(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(acceptAll,
 		wspulse.WithCheckOrigin(func(r *http.Request) bool { return false }),
 	)
@@ -1182,6 +1333,7 @@ func TestWithCheckOrigin_RejectsConnection(t *testing.T) {
 // ── ServeHTTP edge case tests ─────────────────────────────────────────────────
 
 func TestServer_ServeHTTP_AfterClose_Returns503(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(acceptAll)
 	srv.Close()
 
@@ -1199,6 +1351,7 @@ func TestServer_ServeHTTP_AfterClose_Returns503(t *testing.T) {
 }
 
 func TestServer_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
@@ -1224,6 +1377,7 @@ func TestServer_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 // ── Session Send edge case tests ──────────────────────────────────────────────
 
 func TestServer_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1253,6 +1407,7 @@ func TestServer_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.
 // ── Broadcast edge case tests ─────────────────────────────────────────────────
 
 func TestServer_Broadcast_SkipsClosedSession(t *testing.T) {
+	t.Parallel()
 	// Broadcast while a connection is being kicked should not panic.
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -1280,6 +1435,7 @@ func TestServer_Broadcast_SkipsClosedSession(t *testing.T) {
 // ── readPump edge case tests ──────────────────────────────────────────────────
 
 func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
+	t.Parallel()
 	received := make(chan wspulse.Frame, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1296,7 +1452,10 @@ func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 		t.Fatalf("WriteMessage (malformed) failed: %v", err)
 	}
 	// Send a valid frame after the malformed one — readPump should continue.
-	validData, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
+	validData, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, validData); err != nil {
 		t.Fatalf("WriteMessage (valid) failed: %v", err)
 	}
@@ -1314,17 +1473,27 @@ func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 // ── Resume: stale closed session in register ─────────────────────────────────
 
 func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
+	t.Parallel()
 	// Trigger the stateClosed path in handleRegister: connect, let grace
 	// expire (session becomes closed), then reconnect with the same ID.
 	connected := make(chan struct{}, 4)
 	disconnected := make(chan struct{}, 4)
+	dropped := make(chan struct{}, 4)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second), // 1-second window
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -1344,11 +1513,19 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 		t.Fatal("timed out waiting for first connect")
 	}
 
-	// Close transport and wait for grace to expire.
+	// Close transport and fire the grace timer.
 	_ = c1.Close()
 	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	fc.Fire(0)
+
+	select {
 	case <-disconnected:
-	case <-time.After(5 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for grace expiry disconnect")
 	}
 
@@ -1385,6 +1562,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 // ── Server.Close() synchronous behavior ───────────────────────────────────────
 
 func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1420,6 +1598,7 @@ func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
 // ── Concurrent Close and Kick ─────────────────────────────────────────────────
 
 func TestServer_ConcurrentCloseAndKick_NoRace(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1453,6 +1632,7 @@ func TestServer_ConcurrentCloseAndKick_NoRace(t *testing.T) {
 // ── Concurrent Close and Broadcast ────────────────────────────────────────────
 
 func TestServer_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1488,6 +1668,7 @@ func TestServer_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 // ── Resume: connection.Close() while suspended ───────────────────────────────
 
 func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
 
@@ -1535,6 +1716,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 // ── Multiple rapid resume cycles ──────────────────────────────────────────────
 
 func TestServer_Resume_MultipleRapidCycles(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
@@ -1557,6 +1739,7 @@ func TestServer_Resume_MultipleRapidCycles(t *testing.T) {
 }
 
 func TestServer_Broadcast_EncodeError_ReturnsError(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1583,6 +1766,7 @@ func TestServer_Broadcast_EncodeError_ReturnsError(t *testing.T) {
 }
 
 func TestServer_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1610,16 +1794,26 @@ func TestServer_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 // ── Grace expired for already-closed session ─────────────────────────────────
 
 func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
+	t.Parallel()
 	// Tests the handleGraceExpired stateClosed path: connection.Close()
 	// is called while suspended, then the grace timer fires.
 	connected := make(chan wspulse.Connection, 1)
+	dropped := make(chan struct{}, 1)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- connection:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -1636,14 +1830,19 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 
 	// Close transport → session suspends.
 	_ = c.Close()
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
 
 	// Application calls Close() on the Connection while suspended.
 	_ = connection.Close()
 
-	// Wait for grace timer to fire (1 second). handleGraceExpired will see
-	// stateClosed and clean up maps without calling Close again.
-	time.Sleep(1500 * time.Millisecond)
+	// Fire the grace timer. handleGraceExpired will see stateClosed
+	// and clean up maps without calling Close again.
+	fc.Fire(0)
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify session is fully cleaned up.
 	connections := srv.GetConnections("test-room")
@@ -1655,18 +1854,28 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 // ── Resume: stale grace timer (epoch mismatch) ──────────────────────────────
 
 func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
+	t.Parallel()
 	// Connect, disconnect (suspend, timer start), reconnect (resume, epoch bump),
-	// disconnect again (new timer), let OLD timer fire (epoch mismatch → ignored),
+	// disconnect again (new timer), fire OLD timer (epoch mismatch → ignored),
 	// then reconnect again — session must still be alive.
 	connected := make(chan struct{}, 10)
 	disconnected := make(chan struct{}, 10)
+	dropped := make(chan struct{}, 10)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -1679,7 +1888,7 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	)
 	t.Cleanup(srv.Close)
 
-	// Cycle 1: connect → disconnect (suspend).
+	// Cycle 1: connect → disconnect (suspend). Timer 0 (epoch=1).
 	c1, ts := dialTestServerRaw(t, srv)
 	select {
 	case <-connected:
@@ -1687,9 +1896,13 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 		t.Fatal("timed out waiting for first connect")
 	}
 	_ = c1.Close()
-	time.Sleep(200 * time.Millisecond) // grace timer epoch=1 started
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first drop")
+	}
 
-	// Cycle 2: reconnect (resume, epoch bumped), disconnect again.
+	// Cycle 2: reconnect (resume, epoch bumped), disconnect again. Timer 1 (epoch=2).
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
@@ -1698,7 +1911,11 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	}
 	time.Sleep(200 * time.Millisecond)
 	_ = c2.Close()
-	time.Sleep(200 * time.Millisecond) // grace timer epoch=2 started
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for second drop")
+	}
 
 	// Cycle 3: reconnect again (resume, epoch bumped again).
 	c3, _, err := dialer.Dial(u, nil)
@@ -1706,10 +1923,12 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 		t.Fatalf("reconnect 2 failed: %v", err)
 	}
 	t.Cleanup(func() { _ = c3.Close() })
+	time.Sleep(200 * time.Millisecond)
 
-	// Wait for the old timers (epoch=1, epoch=2) to fire — both should be
-	// detected as stale and ignored.
-	time.Sleep(1200 * time.Millisecond)
+	// Fire old timers (epoch=1, epoch=2) — both should be detected as stale.
+	fc.Fire(0)
+	fc.Fire(1)
+	time.Sleep(50 * time.Millisecond)
 
 	// Session should still be alive.
 	select {
@@ -1726,6 +1945,7 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 // ── handleTransportDied: transport-died for closed session (kick then readPump reports) ─
 
 func TestServer_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
+	t.Parallel()
 	// When Kick is called on a connected session with resume enabled,
 	// the session transitions to stateClosed. Later when readPump exits
 	// (transport closed by writePump's defer), the transportDiedMessage
@@ -1773,6 +1993,7 @@ func TestServer_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 // ── readPump and writePump: inline hub-shutdown cleanup ──────────────────────
 
 func TestServer_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
+	t.Parallel()
 	// When the hub is closed while connections are active, readPumps that
 	// discover h.done is closed should call s.closeOnce.Do inline.
 	const count = 5
@@ -1831,6 +2052,7 @@ func TestServer_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 // ── Duplicate connection with resume enabled ─────────────────────────────────
 
 func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
+	t.Parallel()
 	var (
 		firstConnected  = make(chan struct{})
 		kicked          = make(chan struct{})
@@ -1876,6 +2098,7 @@ func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 // ── Pong handler coverage ────────────────────────────────────────────────────
 
 func TestServer_PongHandler_ResetsReadDeadline(t *testing.T) {
+	t.Parallel()
 	// Use a short ping period so the server sends a Ping quickly.
 	// The gorilla client auto-responds with Pong, which fires the
 	// PongHandler on the server and covers that code path.
@@ -1911,6 +2134,7 @@ func TestServer_PongHandler_ResetsReadDeadline(t *testing.T) {
 // ── Normal close frame (covers "connection closed normally" log) ─────────────
 
 func TestServer_NormalCloseFrame_LogsNormally(t *testing.T) {
+	t.Parallel()
 	disconnected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1949,6 +2173,7 @@ func TestServer_NormalCloseFrame_LogsNormally(t *testing.T) {
 // ── writePump pumpQuit: verify pump stops on transport swap ──────────────────
 
 func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
+	t.Parallel()
 	// Verifies that writePump exits via pumpQuit when the session is suspended.
 	// After suspend + resume, the old writePump must have exited (via pumpQuit),
 	// because the new writePump successfully delivers frames.
@@ -2012,12 +2237,16 @@ func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 // ── No OnMessage callback: readPump should still process frames ──────────────
 
 func TestServer_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
+	t.Parallel()
 	srv := wspulse.NewServer(acceptAll) // no OnMessage callback
 	t.Cleanup(srv.Close)
 	c := dialTestServer(t, srv)
 
 	// Send a frame — readPump should process without crash.
-	data, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
+	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 		t.Fatalf("WriteMessage failed: %v", err)
 	}
@@ -2027,6 +2256,7 @@ func TestServer_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 // ── handleRegister stateClosed path (app-closed then reconnect) ──────────────
 
 func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
+	t.Parallel()
 	// Hits the stateClosed path in handleRegister: session is closed by
 	// the application while suspended, then a reconnect arrives before
 	// the grace timer fires.
@@ -2098,6 +2328,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 // ── Resume: stateClosed path in handleRegister fires onDisconnect ─────────────
 
 func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
+	t.Parallel()
 	// Regression test: handleRegister's stateClosed branch must fire onDisconnect.
 	// When Close() is called on a suspended session and a new connection with
 	// the same ID arrives before the hub processes the resulting
@@ -2188,6 +2419,7 @@ func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 // ── Broadcast covers done-check skip path ────────────────────────────────────
 
 func TestServer_Broadcast_SkipsDirectlyClosedSession(t *testing.T) {
+	t.Parallel()
 	// When an application calls connection.Close() directly (not via Kick),
 	// the session remains in the hub maps but has done closed. A subsequent
 	// broadcast should silently skip this session via the <-target.done check.
@@ -2221,6 +2453,7 @@ func TestServer_Broadcast_SkipsDirectlyClosedSession(t *testing.T) {
 // ── writePump: detach with long ping to ensure pumpQuit fires first ──────────
 
 func TestServer_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
+	t.Parallel()
 	// With a long ping period, writePump is guaranteed to be idle in the
 	// main select when pumpQuit fires (no tick to cause a write error first).
 	connected := make(chan struct{}, 2)
@@ -2274,6 +2507,7 @@ func TestServer_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
 // ── Session.Send when done closes concurrently ──────────────────────────────
 
 func TestServer_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
+	t.Parallel()
 	// Exercises the <-s.done path inside enqueue's three-way select
 	// by racing Send calls against Close.
 	connected := make(chan wspulse.Connection, 1)
@@ -2319,6 +2553,7 @@ func TestServer_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 // the else branch of IsUnexpectedCloseError (the "connection closed normally"
 // debug log), because CloseGoingAway is in the expected close code list.
 func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
@@ -2382,6 +2617,7 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 // (set by Connection.Close()) when the transport-died event arrives.
 // The hub should still clean up maps and fire onDisconnect.
 func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
+	t.Parallel()
 	var capturedConn wspulse.Connection
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -2423,15 +2659,25 @@ func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 // successfully resumed (stateConnected) by the time the grace timer
 // fires. The hub should skip destruction and the session stays alive.
 func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
+	dropped := make(chan struct{}, 1)
+	fc := newFakeClock()
 
 	srv := wspulse.NewServer(
 		acceptAll,
-		wspulse.WithResumeWindow(1*time.Second), // minimum 1s
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -2452,12 +2698,15 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 		t.Fatal("timed out waiting for first connect")
 	}
 
-	// Disconnect (triggers suspend + 1s grace timer).
+	// Disconnect (triggers suspend + grace timer via fakeClock).
 	_ = c1.Close()
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
 
-	// Reconnect before the grace timer fires. Resume does not fire
-	// onConnect — it only calls attachWS, so we verify via Send instead.
+	// Reconnect before firing the grace timer.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
@@ -2467,9 +2716,10 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	t.Cleanup(func() { _ = c2.Close() })
 	time.Sleep(200 * time.Millisecond)
 
-	// Wait for the grace timer to fire (1s window + margin).
-	// The timer should find the session in stateConnected and skip.
-	time.Sleep(1500 * time.Millisecond)
+	// Fire the grace timer — session is already resumed (stateConnected),
+	// so handleGraceExpired should skip it.
+	fc.Fire(0)
+	time.Sleep(50 * time.Millisecond)
 
 	// Session should still be alive — verify by sending a frame.
 	frame := wspulse.Frame{Event: "still-alive", Payload: []byte(`"ok"`)}
@@ -2498,6 +2748,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 // This happens when a session is suspended, resumed, and suspended again —
 // the first timer fires with the old epoch and should be ignored.
 func TestServer_Resume_StaleGraceTimer(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
@@ -2559,6 +2810,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 // is in stateClosed before the transport dies. The hub enters the stateClosed
 // case of the non-connected switch and cleans up.
 func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
+	t.Parallel()
 	var capturedConn wspulse.Connection
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -2600,6 +2852,7 @@ func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
 // multiple buffered frames, the drain loop must apply drop-oldest backpressure
 // to enqueue resume frames.
 func TestServer_Resume_DrainBufferFull(t *testing.T) {
+	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
@@ -2677,6 +2930,7 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 // onDisconnect once the grace timer expires. This covers the stateClosed
 // path in handleGraceExpired.
 func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
 	var once sync.Once
@@ -2740,6 +2994,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 // Regression: previously onDisconnect was delayed until the grace timer
 // fired naturally, even if the application had already called Close().
 func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
+	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
 	var once sync.Once
@@ -2805,6 +3060,7 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 // onDisconnect callbacks were never invoked due to the internal close
 // coordination logic dropping events.
 func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
+	t.Parallel()
 	const count = 200
 
 	var mu sync.Mutex
@@ -2897,6 +3153,7 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 // To maximise the chance of hitting this window, the test closes the
 // transport and immediately calls Close() without waiting for suspension.
 func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
+	t.Parallel()
 	const count = 50
 
 	connected := make(chan wspulse.Connection, count)
@@ -2956,5 +3213,467 @@ func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		got := disconnectCount.Load()
 		t.Fatalf("want %d onDisconnect within 3s, got %d (delayed by grace window?)", count, got)
+	}
+}
+
+// ── Transport callback tests ──────────────────────────────────────────────────
+
+func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	dropped := make(chan wspulse.Connection, 1)
+	droppedErr := make(chan error, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			dropped <- connection
+			droppedErr <- err
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	_ = c.Close()
+
+	select {
+	case conn := <-dropped:
+		if conn.ID() != "test-connection" {
+			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// err may be nil for a normal closure (CloseNormalClosure).
+	select {
+	case <-droppedErr:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop error")
+	}
+}
+
+func TestOnTransportRestore_FiresOnResume(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+	restored := make(chan wspulse.Connection, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			restored <- connection
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with same connectionID.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	select {
+	case conn := <-restored:
+		if conn.ID() != "test-connection" {
+			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportRestore")
+	}
+}
+
+func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	disconnected := make(chan struct{}, 1)
+	dropFired := make(chan struct{}, 1)
+	restoreFired := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		// No WithResumeWindow — default is 0.
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			select {
+			case disconnected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropFired <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			select {
+			case restoreFired <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	_ = c.Close()
+
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnDisconnect")
+	}
+
+	// Verify transport callbacks did not fire (no resume window configured).
+	select {
+	case <-dropFired:
+		t.Error("OnTransportDrop fired without resume window")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire.
+	}
+
+	select {
+	case <-restoreFired:
+		t.Error("OnTransportRestore fired without resume window")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire.
+	}
+}
+
+func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
+	t.Parallel()
+	events := make(chan string, 4)
+	fc := newFakeClock()
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			events <- "connect"
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			events <- "drop"
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			events <- "disconnect"
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c := dialTestServer(t, srv)
+	select {
+	case e := <-events:
+		if e != "connect" {
+			t.Fatalf("first event: want %q, got %q", "connect", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect event")
+	}
+
+	_ = c.Close()
+
+	// Expect: drop fires first, then disconnect fires after grace expires.
+	select {
+	case e := <-events:
+		if e != "drop" {
+			t.Fatalf("second event: want %q, got %q", "drop", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for drop event")
+	}
+
+	fc.Fire(0)
+
+	select {
+	case e := <-events:
+		if e != "disconnect" {
+			t.Fatalf("third event: want %q, got %q", "disconnect", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for disconnect event")
+	}
+}
+
+func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
+	t.Parallel()
+	events := make(chan string, 4)
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			events <- "restore"
+		}),
+		wspulse.WithOnMessage(func(connection wspulse.Connection, f wspulse.Frame) {
+			events <- "message"
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	// Wait for restore event first.
+	select {
+	case e := <-events:
+		if e != "restore" {
+			t.Fatalf("first event after reconnect: want %q, got %q", "restore", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for restore event")
+	}
+
+	// Now send a message on the new transport.
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
+	if err := c2.WriteMessage(websocket.TextMessage, encoded); err != nil {
+		t.Fatalf("WriteMessage failed: %v", err)
+	}
+
+	select {
+	case e := <-events:
+		if e != "message" {
+			t.Fatalf("second event after reconnect: want %q, got %q", "message", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for message event")
+	}
+}
+
+// TestOnTransportRestore_FiresAfterStateConnected verifies that OnTransportRestore
+// fires only after the session has transitioned to stateConnected (pumps running).
+// If the callback fires while the session is still suspended, Send() will buffer
+// to the resume buffer (which has already been drained), and the frame will never
+// reach the client.
+func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			// Send a frame from within the callback. If this fires
+			// before stateConnected, the frame goes to the resume
+			// buffer (already drained) and never reaches the client.
+			_ = connection.Send(wspulse.Frame{
+				Event:   "from-restore",
+				Payload: []byte(`"hello"`),
+			})
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with same connectionID.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	// The client must receive the frame sent from OnTransportRestore.
+	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, message, err := c2.ReadMessage()
+	if err != nil {
+		t.Fatalf("ReadMessage failed (frame from OnTransportRestore not received): %v", err)
+	}
+	f, err := wspulse.JSONCodec.Decode(message)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if f.Event != "from-restore" {
+		t.Errorf("event: want %q, got %q", "from-restore", f.Event)
+	}
+}
+
+func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
+	t.Parallel()
+	connected := make(chan wspulse.Connection, 2)
+	dropped := make(chan struct{}, 1)
+	restoreFired := make(chan struct{}, 1)
+
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithResumeWindow(5*time.Second),
+		wspulse.WithOnConnect(func(connection wspulse.Connection) {
+			select {
+			case connected <- connection:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(connection wspulse.Connection, err error) {
+			// Close the session from the drop callback. This sets
+			// state = stateClosed while the session is still suspended.
+			// If the reconnect arrives before the hub processes the
+			// graceExpired message, handleRegister sees stateSuspended
+			// and calls attachWS — the transition goroutine must check
+			// state before firing onResumeComplete.
+			_ = connection.Close()
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportRestore(func(connection wspulse.Connection) {
+			select {
+			case restoreFired <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	c1, ts := dialTestServerRaw(t, srv)
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for first connect")
+	}
+
+	// Drop transport → session suspends, OnTransportDrop fires and calls Close().
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Reconnect with the same connectionID immediately. Depending on
+	// hub event ordering, the old closed session may or may not still
+	// be registered. Either way, OnTransportRestore must NOT fire for
+	// a session that was closed.
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("reconnect dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	select {
+	case <-restoreFired:
+		t.Fatal("OnTransportRestore fired on a closed session")
+	case <-time.After(200 * time.Millisecond):
+		// OK — callback did not fire for the closed session.
 	}
 }

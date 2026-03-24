@@ -3,7 +3,6 @@ package wspulse
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -136,7 +135,11 @@ func (h *hub) handleRegister(message registerMessage) {
 			// as stale and ignored by handleGraceExpired.
 			existing.cancelGraceTimer()
 
-			existing.attachWS(message.transport, h)
+			var onResume func()
+			if fn := h.config.onTransportRestore; fn != nil {
+				onResume = func() { fn(existing) }
+			}
+			existing.attachWS(message.transport, h, onResume)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
@@ -182,7 +185,7 @@ func (h *hub) handleRegister(message registerMessage) {
 	h.connectionsByID[message.connectionID] = newSession
 	h.mu.Unlock()
 
-	newSession.attachWS(message.transport, h)
+	newSession.attachWS(message.transport, h, nil)
 
 	h.config.logger.Debug("wspulse: session connected",
 		zap.String("conn_id", message.connectionID),
@@ -262,7 +265,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			)
 			return
 		}
-		timer := time.AfterFunc(h.config.resumeWindow, func() {
+		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
 			select {
 			case h.graceExpired <- graceExpiredMessage{session: target, epoch: epoch}:
 			case <-h.done:
@@ -288,6 +291,9 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			zap.String("conn_id", target.id),
 			zap.Duration("resume_window", h.config.resumeWindow),
 		)
+		if fn := h.config.onTransportDrop; fn != nil {
+			go fn(target, message.err)
+		}
 		return
 	}
 
