@@ -332,6 +332,32 @@ func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
 	t.Cleanup(srv.Close)
 }
 
+func TestWithUpgraderBufferSize_Zero_Panics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for zero readSize")
+		}
+	}()
+	wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
+}
+
+func TestWithUpgraderBufferSize_NegativeWriteSize_Panics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for negative writeSize")
+		}
+	}()
+	wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
+}
+
+func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(4096, 4096))
+	t.Cleanup(srv.Close)
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

@@ -47,8 +47,10 @@ type serverConfig struct {
 	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
 	codec              Codec
 	checkOrigin        func(r *http.Request) bool
-	logger             *zap.Logger
-	clock              clock
+	logger                  *zap.Logger
+	clock                   clock
+	upgraderReadBufferSize  int
+	upgraderWriteBufferSize int
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -62,8 +64,10 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 		resumeWindow:   0,
 		codec:          JSONCodec,
 		checkOrigin:    func(*http.Request) bool { return true },
-		logger:         zap.NewNop(),
-		clock:          realClock{},
+		logger:                  zap.NewNop(),
+		clock:                   realClock{},
+		upgraderReadBufferSize:  1024,
+		upgraderWriteBufferSize: 1024,
 	}
 }
 
@@ -227,4 +231,21 @@ func WithResumeWindow(d time.Duration) ServerOption {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
 	}
 	return func(c *serverConfig) { c.resumeWindow = d }
+}
+
+// WithUpgraderBufferSize sets the I/O buffer sizes for the WebSocket upgrader.
+// Larger buffers reduce per-write allocations for applications that send
+// large messages. Default: 1024 bytes for both read and write.
+// Panics if either size is not positive.
+func WithUpgraderBufferSize(readSize, writeSize int) ServerOption {
+	if readSize <= 0 {
+		panic("wspulse: WithUpgraderBufferSize: readSize must be positive")
+	}
+	if writeSize <= 0 {
+		panic("wspulse: WithUpgraderBufferSize: writeSize must be positive")
+	}
+	return func(c *serverConfig) {
+		c.upgraderReadBufferSize = readSize
+		c.upgraderWriteBufferSize = writeSize
+	}
 }

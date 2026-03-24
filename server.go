@@ -82,8 +82,8 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 		hub:     h,
 		hubDone: hubDone,
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  config.upgraderReadBufferSize,
+			WriteBufferSize: config.upgraderWriteBufferSize,
 			CheckOrigin:     config.checkOrigin,
 		},
 	}
