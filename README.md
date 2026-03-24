@@ -224,7 +224,7 @@ make clean      # remove build artifacts and test cache
 
 ---
 
-## Related Modules             |
-| --------------------------------------------------------- | ----------------------- |
-| [wspulse/core](https://github.com/wspulse/core)           | Shared types and codecs |
-| [wspulse/client-go](https://github.com/wspulse/client-go) | Go WebSocket client     |
+## Related Modules            
+ 
+- [wspulse/core](https://github.com/wspulse/core) - Shared types and codecs 
+- [wspulse/client-go](https://github.com/wspulse/client-go) - Go client library with automatic reconnection and session resumption
