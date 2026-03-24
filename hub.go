@@ -3,6 +3,7 @@ package wspulse
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -140,6 +141,7 @@ func (h *hub) handleRegister(message registerMessage) {
 				onResume = func() { fn(existing) }
 			}
 			existing.attachWS(message.transport, h, onResume)
+			h.config.metrics.ResumeAttempt(existing.roomID, existing.id, true)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
@@ -180,12 +182,15 @@ func (h *hub) handleRegister(message registerMessage) {
 	h.mu.Lock()
 	if h.rooms[message.roomID] == nil {
 		h.rooms[message.roomID] = make(map[string]*session)
+		h.config.metrics.RoomCreated(message.roomID)
 	}
 	h.rooms[message.roomID][message.connectionID] = newSession
 	h.connectionsByID[message.connectionID] = newSession
 	h.mu.Unlock()
 
+	newSession.connectedAt = time.Now()
 	newSession.attachWS(message.transport, h, nil)
+	h.config.metrics.ConnectionOpened(message.roomID, message.connectionID)
 
 	h.config.logger.Debug("wspulse: session connected",
 		zap.String("conn_id", message.connectionID),
@@ -403,6 +408,7 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 		// resumeBuffer and connected sessions apply backpressure uniformly.
 		_ = target.enqueue(message.data, true)
 	}
+	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), len(sessions))
 	h.config.logger.Debug("wspulse: broadcast dispatched",
 		zap.String("room_id", message.roomID),
 		zap.Int("recipients", len(sessions)),
@@ -414,6 +420,7 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 // (closeOnce makes it idempotent).
 func (h *hub) disconnectSession(target *session, err error) {
 	h.removeSession(target)
+	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt))
 	_ = target.Close()
 	if fn := h.config.onDisconnect; fn != nil {
 		go fn(target, err)
@@ -429,6 +436,7 @@ func (h *hub) removeSession(target *session) {
 		delete(room, target.id)
 		if len(room) == 0 {
 			delete(h.rooms, target.roomID)
+			h.config.metrics.RoomDestroyed(target.roomID)
 		}
 	}
 	if h.connectionsByID[target.id] == target {
