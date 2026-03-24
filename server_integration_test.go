@@ -4,6 +4,7 @@ package wspulse_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -101,6 +102,10 @@ func (fc *fakeClock) NewTicker(d time.Duration) *time.Ticker {
 // Fire executes the callback of the i-th registered AfterFunc (0-based).
 func (fc *fakeClock) Fire(i int) {
 	fc.mu.Lock()
+	if i >= len(fc.timers) {
+		fc.mu.Unlock()
+		panic(fmt.Sprintf("fakeClock.Fire(%d): only %d timers registered", i, len(fc.timers)))
+	}
 	ft := fc.timers[i]
 	fc.mu.Unlock()
 	ft.fn()
@@ -110,6 +115,9 @@ func (fc *fakeClock) Fire(i int) {
 func (fc *fakeClock) Duration(i int) time.Duration {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
+	if i >= len(fc.timers) {
+		panic(fmt.Sprintf("fakeClock.Duration(%d): only %d timers registered", i, len(fc.timers)))
+	}
 	return fc.timers[i].d
 }
 
@@ -203,7 +211,10 @@ func TestServer_OnMessage_CallbackFires(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := dialTestServer(t, srv)
 	payload := []byte(`{"text":"ping from client"}`)
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: payload})
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: payload})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, encoded); err != nil {
 		t.Fatalf("WriteMessage failed: %v", err)
 	}
@@ -705,7 +716,10 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c := dialTestServer(t, srv)
 
-	data, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	_ = c.WriteMessage(websocket.TextMessage, data)
 
 	select {
@@ -1438,7 +1452,10 @@ func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 		t.Fatalf("WriteMessage (malformed) failed: %v", err)
 	}
 	// Send a valid frame after the malformed one — readPump should continue.
-	validData, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
+	validData, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, validData); err != nil {
 		t.Fatalf("WriteMessage (valid) failed: %v", err)
 	}
@@ -2226,7 +2243,10 @@ func TestServer_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 	c := dialTestServer(t, srv)
 
 	// Send a frame — readPump should process without crash.
-	data, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
+	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
 		t.Fatalf("WriteMessage failed: %v", err)
 	}
@@ -3493,7 +3513,10 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	}
 
 	// Now send a message on the new transport.
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
 	if err := c2.WriteMessage(websocket.TextMessage, encoded); err != nil {
 		t.Fatalf("WriteMessage failed: %v", err)
 	}

@@ -133,6 +133,8 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | `WithOnConnect(fn)`         | —                                    |
 | `WithOnMessage(fn)`         | —                                    |
 | `WithOnDisconnect(fn)`      | —                                    |
+| `WithOnTransportDrop(fn)`   | —                                    |
+| `WithOnTransportRestore(fn)`| —                                    |
 | `WithResumeWindow(d)`        | 0 (disabled)                         |
 | `WithHeartbeat(ping, pong)` | 10 s / 30 s                          |
 | `WithWriteWait(d)`          | 10 s                                 |

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `WithOnTransportDrop(fn)` callback — fires when a connection's transport dies and the session enters the suspended state (requires `WithResumeWindow` > 0)
+- `WithOnTransportRestore(fn)` callback — fires when a suspended session resumes after a client reconnects within the resume window (requires `WithResumeWindow` > 0)
+
+### Changed
+
+- `WithResumeWindow` no longer enforces a 3-minute upper bound — any non-negative `time.Duration` is accepted
+
 ---
 
 ## [0.3.0] - 2026-03-13

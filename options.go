@@ -89,15 +89,36 @@ func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 }
 
 // WithOnTransportDrop registers a callback invoked when a connection's
-// transport dies and the session enters the suspended state (resumeWindow > 0).
-// This does not fire when resumeWindow is 0. The callback runs in a separate goroutine.
+// underlying WebSocket transport dies (network drop, read timeout, or peer
+// close) and the session enters the suspended state because resumeWindow > 0.
+//
+// The error parameter carries the cause of the transport failure (e.g. an
+// i/o timeout from a missed Pong, or a close frame from the peer).
+//
+// This callback does NOT fire when:
+//   - resumeWindow is 0 (OnDisconnect fires directly instead).
+//   - the connection is removed via Kick() or Connection.Close()
+//     (OnDisconnect fires directly instead).
+//
+// The callback runs in a separate goroutine; it must be safe for concurrent use.
 func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
 	return func(c *serverConfig) { c.onTransportDrop = fn }
 }
 
 // WithOnTransportRestore registers a callback invoked when a suspended session
-// resumes after a client reconnects within the resume window. This does not
-// fire when resumeWindow is 0. The callback runs in a separate goroutine.
+// resumes after a client reconnects with the same connectionID within the
+// resume window.
+//
+// When this fires, OnConnect and OnDisconnect are NOT called — the session
+// continues as if the transport had never dropped. Buffered frames are replayed
+// to the new transport before the callback is invoked.
+//
+// This callback does NOT fire when:
+//   - resumeWindow is 0 (session resumption is disabled).
+//   - the resume window expires before the client reconnects
+//     (OnDisconnect fires instead).
+//
+// The callback runs in a separate goroutine; it must be safe for concurrent use.
 func WithOnTransportRestore(fn func(Connection)) ServerOption {
 	return func(c *serverConfig) { c.onTransportRestore = fn }
 }
