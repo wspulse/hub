@@ -143,6 +143,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | `WithCodec(c)`              | JSONCodec                            |
 | `WithCheckOrigin(fn)`       | allow all                            |
 | `WithLogger(l)`             | zap.NewNop() — accepts `*zap.Logger` |
+| `WithMetrics(mc)`           | NoopCollector — accepts `MetricsCollector` |
 
 ---
 
@@ -156,6 +157,34 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 - **Swappable codec** — JSON by default; implement the `Codec` interface to plug in any encoding (binary, Protobuf, MessagePack, etc.).
 - **Kick** — `Server.Kick(connectionID)` always destroys the session immediately, bypassing the resume window.
 - **Graceful shutdown** — `Server.Close()` sends close frames to all connected clients, drains in-flight registrations, and fires `OnDisconnect` for every session.
+- **Metrics** — optional `MetricsCollector` interface for observability; default is `NoopCollector` (zero cost). See [Metrics](#metrics) below.
+
+---
+
+## Metrics
+
+wspulse/server exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (zero overhead).
+
+```go
+collector := prometheus.NewCollector() // from a contrib adapter
+srv := wspulse.NewServer(connect,
+    wspulse.WithMetrics(collector),
+)
+http.Handle("/metrics", collector.Handler())
+```
+
+The interface covers:
+
+| Hook | Description |
+| --- | --- |
+| `ConnectionOpened` / `ConnectionClosed` | Session lifecycle with duration |
+| `RoomCreated` / `RoomDestroyed` | Room allocation and deallocation |
+| `MessageReceived` / `MessageSent` / `MessageBroadcast` | Throughput with byte sizes and fan-out |
+| `FrameDropped` / `SendBufferUtilization` | Backpressure visibility |
+| `ResumeAttempt` | Session resumption tracking |
+| `PongTimeout` | Heartbeat health |
+
+Implement `MetricsCollector` to plug in any backend (Prometheus, OTel, or custom). See [doc/internals.md](doc/internals.md) for goroutine call sites and thread safety requirements.
 
 ---
 

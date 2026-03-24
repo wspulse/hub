@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `MetricsCollector` interface — typed instrumentation hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health
+- `NoopCollector` — default zero-cost implementation that discards all events
+- `WithMetrics(mc MetricsCollector)` server option — plug in any metrics backend (Prometheus, OTel, or custom)
+
+---
+
 ## [0.4.0] - 2026-03-24
 
 ### Added
