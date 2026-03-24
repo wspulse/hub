@@ -734,6 +734,51 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 	}
 }
 
+func TestServer_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
+	t.Parallel()
+	disconnectErr := make(chan error, 1)
+	srv := wspulse.NewServer(
+		acceptAll,
+		wspulse.WithOnMessage(func(connection wspulse.Connection, f wspulse.Frame) {
+			panic("typed-boom")
+		}),
+		wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
+			select {
+			case disconnectErr <- err:
+			default:
+			}
+		}),
+	)
+	t.Cleanup(srv.Close)
+	c := dialTestServer(t, srv)
+
+	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	if err != nil {
+		t.Fatalf("JSONCodec.Encode failed: %v", err)
+	}
+	_ = c.WriteMessage(websocket.TextMessage, data)
+
+	select {
+	case got := <-disconnectErr:
+		var pe *wspulse.PanicError
+		if !errors.As(got, &pe) {
+			t.Fatalf("expected PanicError, got %T: %v", got, got)
+		}
+		if pe.Value != "typed-boom" {
+			t.Fatalf("PanicError.Value = %v, want %q", pe.Value, "typed-boom")
+		}
+		if len(pe.Stack) == 0 {
+			t.Fatal("PanicError.Stack is empty, expected goroutine stack trace")
+		}
+		want := "wspulse: onMessage panic: typed-boom"
+		if pe.Error() != want {
+			t.Fatalf("PanicError.Error() = %q, want %q", pe.Error(), want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for OnDisconnect")
+	}
+}
+
 func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
