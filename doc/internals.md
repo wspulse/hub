@@ -157,7 +157,7 @@ layer.
 
 > **Type:** `WithResumeWindow` accepts a `time.Duration`.
 > `WithResumeWindow(30 * time.Second)` means a 30-second grace window.
-> Valid range: 0 (disabled) … 3 minutes.
+> Valid range: 0 (disabled) … no upper limit.
 
 ### Architecture
 

@@ -92,8 +92,10 @@ func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 // underlying WebSocket transport dies (network drop, read timeout, or peer
 // close) and the session enters the suspended state because resumeWindow > 0.
 //
-// The error parameter carries the cause of the transport failure (e.g. an
-// i/o timeout from a missed Pong, or a close frame from the peer).
+// The error parameter carries the cause of the transport failure when available
+// (e.g. an i/o timeout from a missed Pong, or a close frame from the peer).
+// For a normal or expected close, err may be nil, so callback implementations
+// must not assume it is always non-nil.
 //
 // This callback does NOT fire when:
 //   - resumeWindow is 0 (OnDisconnect fires directly instead).
