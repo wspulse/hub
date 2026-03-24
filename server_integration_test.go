@@ -63,7 +63,7 @@ type fakeTimer struct {
 func newFakeClock() *fakeClock { return &fakeClock{} }
 
 func (fc *fakeClock) AfterFunc(d time.Duration, f func()) *time.Timer {
-	t := time.NewTimer(time.Hour)
+	t := time.AfterFunc(time.Hour, f)
 	t.Stop()
 	fc.mu.Lock()
 	fc.timers = append(fc.timers, &fakeTimer{d: d, fn: f, timer: t})
