@@ -259,3 +259,51 @@ Kick() returns nil
 
 If the hub has already shut down (`<-hub.done`), `Kick` returns
 `ErrServerClosed` without blocking.
+
+---
+
+## 6. Metrics
+
+wspulse/server exposes an optional `MetricsCollector` interface for
+instrumentation. The default is `NoopCollector{}`, which discards all
+events at zero cost (the compiler inlines value-receiver no-ops).
+
+### Configuration
+
+```go
+server.NewServer(connect,
+    server.WithMetrics(myCollector),  // custom implementation
+)
+```
+
+If `WithMetrics` is not called, the server uses `NoopCollector`.
+
+### Interface
+
+`MetricsCollector` defines typed methods for each lifecycle event.
+All methods are fire-and-forget (no return value). Implementations
+must be safe for concurrent use.
+
+### Goroutine call sites
+
+| Method                  | Called from         |
+| ----------------------- | ------------------- |
+| `RoomCreated`           | hub goroutine       |
+| `RoomDestroyed`         | hub goroutine       |
+| `ConnectionOpened`      | hub goroutine       |
+| `ConnectionClosed`      | hub goroutine       |
+| `ResumeAttempt`         | hub goroutine       |
+| `MessageBroadcast`      | hub goroutine       |
+| `MessageReceived`       | readPump goroutine  |
+| `PongTimeout`           | readPump goroutine  |
+| `MessageSent`           | writePump goroutine |
+| `SendBufferUtilization` | writePump goroutine |
+| `FrameDropped`          | hub, readPump, writePump, or transition goroutine (multiple call sites) |
+
+### Connection duration
+
+`ConnectionClosed` receives a `duration` parameter computed as
+`time.Since(session.connectedAt)`. The `connectedAt` timestamp is set
+once when the session is created in `handleRegister`. This means the
+duration reflects the **logical session lifetime**, including any time
+spent in the suspended state during session resumption.
