@@ -44,8 +44,7 @@ making any changes.
 
 > `doc/local/` is git-ignored. Never commit files under it.
 
-- **Start of session**: read `doc/local/ai-learning.md` (if present) and check
-  `doc/local/plan/` for any in-progress plan.
-- **Feature work**: save plan to `doc/local/plan/<feature-name>.md` first.
-- **End of session**: append mistakes/learnings to `doc/local/ai-learning.md`.
+- **Start of session**: read `doc/local/ai-learning.md` in full (create with header if missing) and check `doc/local/plan/` for any in-progress plan.
+- **Feature work**: save plan to `doc/local/plan/<feature-name>.md` before starting.
+- **End of session**: append at least one entry to `doc/local/ai-learning.md` — **mandatory even if no mistakes were made**. An empty file proves the session protocol was ignored.
   Format: `Date` / `Issue or Learning` / `Root Cause` / `Prevention Rule`.
