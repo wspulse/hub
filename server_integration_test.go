@@ -106,6 +106,13 @@ func (fc *fakeClock) Fire(i int) {
 	ft.fn()
 }
 
+// Duration returns the duration passed to the i-th AfterFunc call.
+func (fc *fakeClock) Duration(i int) time.Duration {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return fc.timers[i].d
+}
+
 // TimerCount returns the number of registered AfterFunc timers.
 func (fc *fakeClock) TimerCount() int {
 	fc.mu.Lock()
@@ -978,6 +985,11 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for OnTransportDrop")
+	}
+
+	// Verify the grace timer was registered with the correct duration.
+	if got := fc.Duration(0); got != 3*time.Minute {
+		t.Fatalf("grace timer duration: want %v, got %v", 3*time.Minute, got)
 	}
 
 	fc.Fire(0)
