@@ -110,7 +110,7 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.config.logger.Debug("wspulse: connect rejected",
 			zap.Error(err),
 		)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	if connectionID == "" {

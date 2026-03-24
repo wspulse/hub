@@ -5,6 +5,7 @@ package wspulse_test
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -160,7 +161,7 @@ func (failingCodec) FrameType() int { return wspulse.TextMessage }
 func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
-		return "", "", errors.New("unauthorized")
+		return "", "", errors.New("internal: db connection pool exhausted")
 	})
 	t.Cleanup(srv.Close)
 	ts := httptest.NewServer(srv)
@@ -172,6 +173,10 @@ func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
 	defer resp.Body.Close() //nolint:errcheck
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("want 401, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if got := strings.TrimSpace(string(body)); got != "unauthorized" {
+		t.Errorf("response body = %q, want %q (internal error must not leak)", got, "unauthorized")
 	}
 }
 
