@@ -18,10 +18,15 @@ const (
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
 // roomID and connectionID for the new connection.
-// Returning a non-nil error rejects the upgrade with HTTP 401 and the error text as the body.
+// Returning a non-nil error rejects the upgrade with HTTP 401.
 // If connectionID is empty the Server assigns a random UUID so that every connection
 // has a unique, non-empty ID. Use a non-empty connectionID when the application needs
 // deterministic IDs (e.g. for Server.Send and Server.Kick).
+//
+// On session resumption (reconnect within the resume window), the roomID
+// returned by ConnectFunc is ignored — the session retains its original room
+// assignment from the initial connection. Only the first ConnectFunc call for
+// a given connectionID determines the room.
 type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 
 // ServerOption configures a Server.
