@@ -62,6 +62,11 @@ type fakeTimer struct {
 
 func newFakeClock() *fakeClock { return &fakeClock{} }
 
+// AfterFunc returns a stopped *time.Timer created via time.AfterFunc.
+// The timer will not fire on its own — tests must call fc.Fire(i) to
+// invoke the callback. Because time.AfterFunc is used (not time.NewTimer),
+// Reset(0) correctly re-invokes the callback, matching production semantics
+// (e.g. session.Close() calls graceTimer.Reset(0) to force immediate expiry).
 func (fc *fakeClock) AfterFunc(d time.Duration, f func()) *time.Timer {
 	t := time.AfterFunc(time.Hour, f)
 	t.Stop()
