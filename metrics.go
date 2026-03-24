@@ -102,13 +102,3 @@ func (NoopCollector) SendBufferUtilization(_, _ string, _, _ int) {}
 
 // PongTimeout is a no-op. See MetricsCollector.PongTimeout.
 func (NoopCollector) PongTimeout(_, _ string) {}
-
-// WithMetrics configures the MetricsCollector used by the Server.
-// Defaults to NoopCollector{} if not set.
-// Panics if collector is nil.
-func WithMetrics(collector MetricsCollector) ServerOption {
-	if collector == nil {
-		panic("wspulse: WithMetrics: collector must not be nil")
-	}
-	return func(c *serverConfig) { c.metrics = collector }
-}

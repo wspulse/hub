@@ -225,3 +225,13 @@ func WithResumeWindow(d time.Duration) ServerOption {
 	}
 	return func(c *serverConfig) { c.resumeWindow = d }
 }
+
+// WithMetrics configures the MetricsCollector used by the Server.
+// Defaults to NoopCollector{} if not set.
+// Panics if collector is nil.
+func WithMetrics(collector MetricsCollector) ServerOption {
+	if collector == nil {
+		panic("wspulse: WithMetrics: collector must not be nil")
+	}
+	return func(c *serverConfig) { c.metrics = collector }
+}

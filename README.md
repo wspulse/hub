@@ -166,11 +166,13 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 wspulse/server exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (zero overhead).
 
 ```go
-collector := prometheus.NewCollector() // from a contrib adapter
+// Use a contrib adapter (e.g. wspulse/metrics-prometheus or wspulse/metrics-otel),
+// or implement MetricsCollector yourself.
+var collector wspulse.MetricsCollector = myCollector
+
 srv := wspulse.NewServer(connect,
     wspulse.WithMetrics(collector),
 )
-http.Handle("/metrics", collector.Handler())
 ```
 
 The interface covers:

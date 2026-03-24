@@ -1,6 +1,7 @@
 package wspulse
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -118,11 +119,18 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	// Check if we need to buffer (suspended state).
 	s.mu.Lock()
 	if s.state == stateSuspended && s.resumeBuffer != nil {
-		s.resumeBuffer.Push(data)
+		dropped := s.resumeBuffer.Push(data)
 		s.mu.Unlock()
-		s.config.logger.Debug("wspulse: frame buffered to resumeBuffer",
-			zap.String("conn_id", s.id),
-		)
+		if dropped {
+			s.config.metrics.FrameDropped(s.roomID, s.id)
+			s.config.logger.Debug("wspulse: oldest frame dropped from resumeBuffer (backpressure)",
+				zap.String("conn_id", s.id),
+			)
+		} else {
+			s.config.logger.Debug("wspulse: frame buffered to resumeBuffer",
+				zap.String("conn_id", s.id),
+			)
+		}
 		return nil
 	}
 	s.mu.Unlock()
@@ -444,7 +452,8 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 	for {
 		_, data, err := transport.ReadMessage()
 		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
 				s.config.metrics.PongTimeout(s.roomID, s.id)
 			}
 			if websocket.IsUnexpectedCloseError(err,

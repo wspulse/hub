@@ -14,6 +14,7 @@ belong to the consumers of wspulse/server.
 3. [Backpressure and Send Buffer](#3-backpressure-and-send-buffer)
 4. [Connection Teardown](#4-connection-teardown)
 5. [Session Resumption](#5-session-resumption)
+6. [Metrics](#6-metrics)
 
 ---
 

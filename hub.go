@@ -168,12 +168,13 @@ func (h *hub) handleRegister(message registerMessage) {
 
 	// Create a new session.
 	newSession := &session{
-		id:     message.connectionID,
-		roomID: message.roomID,
-		send:   make(chan []byte, h.config.sendBufferSize),
-		done:   make(chan struct{}),
-		state:  stateConnected,
-		config: h.config,
+		id:          message.connectionID,
+		roomID:      message.roomID,
+		send:        make(chan []byte, h.config.sendBufferSize),
+		done:        make(chan struct{}),
+		state:       stateConnected,
+		connectedAt: time.Now(),
+		config:      h.config,
 	}
 	if h.config.resumeWindow > 0 {
 		newSession.resumeBuffer = newRingBuffer(h.config.sendBufferSize)
@@ -188,7 +189,6 @@ func (h *hub) handleRegister(message registerMessage) {
 	h.connectionsByID[message.connectionID] = newSession
 	h.mu.Unlock()
 
-	newSession.connectedAt = time.Now()
 	newSession.attachWS(message.transport, h, nil)
 	h.config.metrics.ConnectionOpened(message.roomID, message.connectionID)
 
