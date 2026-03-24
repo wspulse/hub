@@ -47,17 +47,27 @@ func dialTestServerRaw(t *testing.T, srv wspulse.Server) (*websocket.Conn, *http
 	return c, ts
 }
 
-// ── Fake clock for grace-timer tests ─────────────────────────────────────────
+// ── Fake clock ───────────────────────────────────────────────────────────────
+//
+// fakeClock replaces both AfterFunc (grace timer) and NewTicker (heartbeat)
+// with controllable fakes. No real timers fire — tests drive time explicitly
+// via Fire (for AfterFunc callbacks) or by reading the returned ticker fields.
 
 type fakeClock struct {
-	mu     sync.Mutex
-	timers []*fakeTimer
+	mu      sync.Mutex
+	timers  []*fakeTimer
+	tickers []*fakeTicker
 }
 
 type fakeTimer struct {
 	d     time.Duration
 	fn    func()
 	timer *time.Timer
+}
+
+type fakeTicker struct {
+	d      time.Duration
+	ticker *time.Ticker
 }
 
 func newFakeClock() *fakeClock { return &fakeClock{} }
@@ -76,8 +86,16 @@ func (fc *fakeClock) AfterFunc(d time.Duration, f func()) *time.Timer {
 	return t
 }
 
+// NewTicker returns a stopped ticker that will never fire on its own.
+// This prevents heartbeat pings from interfering with tests that use
+// fakeClock. The ticker is recorded for inspection if needed.
 func (fc *fakeClock) NewTicker(d time.Duration) *time.Ticker {
-	return time.NewTicker(d)
+	t := time.NewTicker(time.Hour)
+	t.Stop()
+	fc.mu.Lock()
+	fc.tickers = append(fc.tickers, &fakeTicker{d: d, ticker: t})
+	fc.mu.Unlock()
+	return t
 }
 
 // Fire executes the callback of the i-th registered AfterFunc (0-based).
@@ -86,6 +104,20 @@ func (fc *fakeClock) Fire(i int) {
 	ft := fc.timers[i]
 	fc.mu.Unlock()
 	ft.fn()
+}
+
+// TimerCount returns the number of registered AfterFunc timers.
+func (fc *fakeClock) TimerCount() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.timers)
+}
+
+// TickerCount returns the number of registered tickers.
+func (fc *fakeClock) TickerCount() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.tickers)
 }
 
 // Len returns the number of registered timers.
