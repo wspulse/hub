@@ -44,6 +44,7 @@ type serverConfig struct {
 	checkOrigin        func(r *http.Request) bool
 	logger             *zap.Logger
 	clock              clock
+	metrics            MetricsCollector
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -59,6 +60,7 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 		checkOrigin:    func(*http.Request) bool { return true },
 		logger:         zap.NewNop(),
 		clock:          realClock{},
+		metrics:        NoopCollector{},
 	}
 }
 
