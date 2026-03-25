@@ -108,7 +108,7 @@ func BenchmarkSend(b *testing.B) {
 			default:
 			}
 		}),
-		wspulse.WithSendBufferSize(4096), // large buffer to avoid filling during benchmark
+		wspulse.WithSendBufferSize(4096), // larger buffer to reduce send-buffer-full frequency
 	)
 
 	ts := httptest.NewServer(srv)
