@@ -33,20 +33,20 @@ type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 type ServerOption func(*serverConfig) //nolint:revive
 
 type serverConfig struct {
-	connect            ConnectFunc
-	onConnect          func(Connection)
-	onMessage          func(Connection, Frame)
-	onDisconnect       func(Connection, error)
-	onTransportDrop    func(Connection, error)
-	onTransportRestore func(Connection)
-	pingPeriod         time.Duration
-	pongWait           time.Duration
-	writeWait          time.Duration
-	maxMessageSize     int64
-	sendBufferSize     int
-	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
-	codec              Codec
-	checkOrigin        func(r *http.Request) bool
+	connect                 ConnectFunc
+	onConnect               func(Connection)
+	onMessage               func(Connection, Frame)
+	onDisconnect            func(Connection, error)
+	onTransportDrop         func(Connection, error)
+	onTransportRestore      func(Connection)
+	pingPeriod              time.Duration
+	pongWait                time.Duration
+	writeWait               time.Duration
+	maxMessageSize          int64
+	sendBufferSize          int
+	resumeWindow            time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
+	codec                   Codec
+	checkOrigin             func(r *http.Request) bool
 	logger                  *zap.Logger
 	clock                   clock
 	upgraderReadBufferSize  int
@@ -55,15 +55,15 @@ type serverConfig struct {
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
 	return &serverConfig{
-		connect:        connect,
-		pingPeriod:     10 * time.Second,
-		pongWait:       30 * time.Second,
-		writeWait:      10 * time.Second,
-		maxMessageSize: 512,
-		sendBufferSize: 256,
-		resumeWindow:   0,
-		codec:          JSONCodec,
-		checkOrigin:    func(*http.Request) bool { return true },
+		connect:                 connect,
+		pingPeriod:              10 * time.Second,
+		pongWait:                30 * time.Second,
+		writeWait:               10 * time.Second,
+		maxMessageSize:          512,
+		sendBufferSize:          256,
+		resumeWindow:            0,
+		codec:                   JSONCodec,
+		checkOrigin:             func(*http.Request) bool { return true },
 		logger:                  zap.NewNop(),
 		clock:                   realClock{},
 		upgraderReadBufferSize:  1024,

@@ -69,8 +69,8 @@ type hub struct {
 	done          chan struct{} // closed by Server.Close()
 
 	mu      sync.RWMutex
-	stopped atomic.Bool    // set by shutdown(); ServeHTTP checks this early
-	scratch []*session     // reusable slice for broadcast snapshot; avoids per-broadcast allocation
+	stopped atomic.Bool // set by shutdown(); ServeHTTP checks this early
+	scratch []*session  // reusable slice for broadcast snapshot; avoids per-broadcast allocation
 	config  *serverConfig
 }
 
