@@ -7,8 +7,18 @@
 - `MetricsCollector` interface — typed instrumentation hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health
 - `NoopCollector` — default zero-cost implementation that discards all events
 - `WithMetrics(mc MetricsCollector)` server option — plug in any metrics backend (Prometheus, OTel, or custom)
+- `PanicError` exported type — wraps panics recovered from `OnMessage` handlers with the panic value and goroutine stack trace; delivered to `OnDisconnect` when resumption is disabled, or to `OnTransportDrop` when resumption is enabled (in which case `OnDisconnect` may later fire with a nil error); use `errors.As` on whichever callback error is non-nil to distinguish handler panics from transport failures
+- `WithUpgraderBufferSize(readSize, writeSize int)` option — configures the WebSocket upgrader I/O buffer sizes (default 1024 bytes each)
+- Benchmarks for ring buffer, broadcast fan-out, direct Send throughput, and drop-oldest backpressure
 
----
+### Changed
+
+- Broadcast fan-out reuses a scratch slice on the hub instead of allocating a new snapshot per invocation — zero-alloc steady state since the hub event loop is single-threaded
+- `ConnectFunc` GoDoc now documents that `roomID` is ignored on session resumption
+
+### Fixed
+
+- `ServeHTTP` no longer leaks the `ConnectFunc` error message to the HTTP 401 response body — returns a generic `"unauthorized"` string instead
 
 ## [0.4.0] - 2026-03-24
 

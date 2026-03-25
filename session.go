@@ -2,8 +2,8 @@ package wspulse
 
 import (
 	"errors"
-	"fmt"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -416,10 +416,12 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 	defer func() {
 		// Recover from panics in OnMessage handlers.
 		if r := recover(); r != nil {
-			readErr = fmt.Errorf("wspulse: readPump panic: %v", r)
+			stack := debug.Stack()
+			readErr = &PanicError{Value: r, Stack: stack}
 			s.config.logger.Error("wspulse: readPump panic recovered",
 				zap.String("conn_id", s.id),
 				zap.Any("panic", r),
+				zap.ByteString("stack", stack),
 			)
 		}
 

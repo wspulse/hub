@@ -71,6 +71,7 @@ type hub struct {
 
 	mu      sync.RWMutex
 	stopped atomic.Bool // set by shutdown(); ServeHTTP checks this early
+	scratch []*session  // reusable slice for broadcast snapshot; avoids per-broadcast allocation
 	config  *serverConfig
 }
 
@@ -381,23 +382,25 @@ func (h *hub) handleKick(request kickRequest) {
 }
 
 // handleBroadcast fans out pre-encoded data to every session in the room.
+// Uses h.scratch to avoid allocating a snapshot slice per broadcast.
+// Safe because the hub event loop is single-threaded.
 func (h *hub) handleBroadcast(message broadcastMessage) {
 	h.mu.RLock()
 	room := h.rooms[message.roomID]
-	sessions := make([]*session, 0, len(room))
+	h.scratch = h.scratch[:0]
 	for _, s := range room {
-		sessions = append(sessions, s)
+		h.scratch = append(h.scratch, s)
 	}
 	h.mu.RUnlock()
 
-	if len(sessions) == 0 {
+	if len(h.scratch) == 0 {
 		h.config.logger.Debug("wspulse: broadcast to empty/unknown room",
 			zap.String("room_id", message.roomID),
 		)
 		return
 	}
 
-	for _, target := range sessions {
+	for _, target := range h.scratch {
 		select {
 		case <-target.done:
 			continue
@@ -408,11 +411,18 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 		// resumeBuffer and connected sessions apply backpressure uniformly.
 		_ = target.enqueue(message.data, true)
 	}
-	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), len(sessions))
+	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), len(h.scratch))
 	h.config.logger.Debug("wspulse: broadcast dispatched",
 		zap.String("room_id", message.roomID),
-		zap.Int("recipients", len(sessions)),
+		zap.Int("recipients", len(h.scratch)),
 	)
+
+	// Clear pointers so disconnected sessions can be GC'd.
+	// Without this, the backing array retains stale *session pointers
+	// in its capacity area after h.scratch[:0] on the next broadcast.
+	for i := range h.scratch {
+		h.scratch[i] = nil
+	}
 }
 
 // disconnectSession removes the session from hub maps, closes it, and fires
