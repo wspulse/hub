@@ -276,8 +276,8 @@ that discards all events with minimal overhead.
 ### Configuration
 
 ```go
-server.NewServer(connect,
-    server.WithMetrics(myCollector),  // custom implementation
+wspulse.NewServer(connect,
+    wspulse.WithMetrics(myCollector),  // custom implementation
 )
 ```
 
