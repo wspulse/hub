@@ -14,6 +14,7 @@ belong to the consumers of wspulse/server.
 3. [Backpressure and Send Buffer](#3-backpressure-and-send-buffer)
 4. [Connection Teardown](#4-connection-teardown)
 5. [Session Resumption](#5-session-resumption)
+6. [Metrics](#6-metrics)
 
 ---
 
@@ -263,3 +264,55 @@ Kick() returns nil
 
 If the hub has already shut down (`<-hub.done`), `Kick` returns
 `ErrServerClosed` without blocking.
+
+---
+
+## 6. Metrics
+
+wspulse/server exposes an optional `MetricsCollector` interface for
+instrumentation. The default is `NoopCollector{}`, a no-op implementation
+that discards all events with minimal overhead.
+
+### Configuration
+
+```go
+wspulse.NewServer(connect,
+    wspulse.WithMetrics(myCollector),  // custom implementation
+)
+```
+
+If `WithMetrics` is not called, the server uses `NoopCollector`.
+
+### Interface
+
+`MetricsCollector` defines typed methods for each lifecycle event.
+All methods are fire-and-forget (no return value). Implementations
+must be safe for concurrent use.
+
+### Goroutine call sites
+
+| Method                  | Called from         |
+| ----------------------- | ------------------- |
+| `RoomCreated`           | hub goroutine       |
+| `RoomDestroyed`         | hub goroutine       |
+| `ConnectionOpened`      | hub goroutine       |
+| `ConnectionClosed`      | hub goroutine       |
+| `ResumeAttempt`         | hub goroutine       |
+| `MessageBroadcast`      | hub goroutine       |
+| `MessageReceived`       | readPump goroutine  |
+| `PongTimeout`           | readPump goroutine  |
+| `MessageSent`           | writePump goroutine |
+| `SendBufferUtilization` | writePump goroutine |
+| `FrameDropped`          | hub goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
+
+### Connection duration
+
+`ConnectionClosed` receives a `duration` parameter computed as
+`time.Since(session.connectedAt)`. The `connectedAt` timestamp is set
+once when the session is created in `handleRegister`. This means the
+duration reflects the **logical session lifetime**, including any time
+spent in the suspended state during session resumption.
+
+`ConnectionClosed` also receives a `reason` parameter of type
+`DisconnectReason` that indicates why the session was terminated.
+See the `DisconnectReason` constants for possible values.

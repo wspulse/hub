@@ -23,16 +23,18 @@ func newRingBuffer(capacity int) *ringBuffer {
 
 // Push appends data to the buffer. If the buffer is full, the oldest
 // element is dropped (drop-oldest backpressure, matching the broadcast
-// strategy used for the send channel).
-func (rb *ringBuffer) Push(data []byte) {
+// strategy used for the send channel). Returns true if an element was
+// dropped to make room.
+func (rb *ringBuffer) Push(data []byte) (dropped bool) {
 	if rb.size < rb.cap {
 		index := (rb.head + rb.size) % rb.cap
 		rb.data[index] = data
 		rb.size++
-	} else {
-		rb.data[rb.head] = data
-		rb.head = (rb.head + 1) % rb.cap
+		return false
 	}
+	rb.data[rb.head] = data
+	rb.head = (rb.head + 1) % rb.cap
+	return true
 }
 
 // Drain returns all buffered frames in FIFO order and resets the buffer.

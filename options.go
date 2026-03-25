@@ -52,6 +52,7 @@ type serverConfig struct {
 	clock                   clock
 	upgraderReadBufferSize  int
 	upgraderWriteBufferSize int
+	metrics                 MetricsCollector
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -69,6 +70,7 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 		clock:                   realClock{},
 		upgraderReadBufferSize:  1024,
 		upgraderWriteBufferSize: 1024,
+		metrics:                 NoopCollector{},
 	}
 }
 
@@ -249,4 +251,14 @@ func WithUpgraderBufferSize(readSize, writeSize int) ServerOption {
 		c.upgraderReadBufferSize = readSize
 		c.upgraderWriteBufferSize = writeSize
 	}
+}
+
+// WithMetrics configures the MetricsCollector used by the Server.
+// Defaults to NoopCollector{} if not set.
+// Panics if collector is nil.
+func WithMetrics(collector MetricsCollector) ServerOption {
+	if collector == nil {
+		panic("wspulse: WithMetrics: collector must not be nil")
+	}
+	return func(c *serverConfig) { c.metrics = collector }
 }

@@ -1,6 +1,8 @@
 package wspulse
 
 import (
+	"errors"
+	"net"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -73,6 +75,8 @@ type session struct {
 	resumeBuffer *ringBuffer     // nil when resume is disabled
 	suspendEpoch uint64          // monotonically increases on each detachWS; stale grace timers compare this
 
+	connectedAt time.Time // session creation time; written once, read-only thereafter
+
 	closeOnce sync.Once
 	config    *serverConfig
 }
@@ -115,11 +119,18 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	// Check if we need to buffer (suspended state).
 	s.mu.Lock()
 	if s.state == stateSuspended && s.resumeBuffer != nil {
-		s.resumeBuffer.Push(data)
+		dropped := s.resumeBuffer.Push(data)
 		s.mu.Unlock()
-		s.config.logger.Debug("wspulse: frame buffered to resumeBuffer",
-			zap.String("conn_id", s.id),
-		)
+		if dropped {
+			s.config.metrics.FrameDropped(s.roomID, s.id)
+			s.config.logger.Debug("wspulse: oldest frame dropped from resumeBuffer (backpressure)",
+				zap.String("conn_id", s.id),
+			)
+		} else {
+			s.config.logger.Debug("wspulse: frame buffered to resumeBuffer",
+				zap.String("conn_id", s.id),
+			)
+		}
 		return nil
 	}
 	s.mu.Unlock()
@@ -135,6 +146,7 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 			s.config.logger.Debug("wspulse: send buffer full, dropping frame",
 				zap.String("conn_id", s.id),
 			)
+			s.config.metrics.FrameDropped(s.roomID, s.id)
 			return ErrSendBufferFull
 		}
 	}
@@ -145,6 +157,7 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 		s.config.logger.Debug("wspulse: oldest frame dropped from send buffer (backpressure)",
 			zap.String("conn_id", s.id),
 		)
+		s.config.metrics.FrameDropped(s.roomID, s.id)
 	default:
 	}
 	select {
@@ -154,6 +167,7 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 		s.config.logger.Debug("wspulse: frame irrecoverably dropped: send buffer still full after drop-oldest",
 			zap.String("conn_id", s.id),
 		)
+		s.config.metrics.FrameDropped(s.roomID, s.id)
 		return ErrSendBufferFull
 	}
 }
@@ -315,6 +329,7 @@ func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete f
 							s.config.logger.Debug("wspulse: oldest frame dropped to make room for resume frame",
 								zap.String("conn_id", s.id),
 							)
+							s.config.metrics.FrameDropped(s.roomID, s.id)
 						default:
 						}
 						select {
@@ -326,6 +341,7 @@ func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete f
 							s.config.logger.Warn("wspulse: resume frame dropped: send buffer still full after drop-oldest",
 								zap.String("conn_id", s.id),
 							)
+							s.config.metrics.FrameDropped(s.roomID, s.id)
 						}
 					}
 				}
@@ -438,6 +454,10 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 	for {
 		_, data, err := transport.ReadMessage()
 		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				s.config.metrics.PongTimeout(s.roomID, s.id)
+			}
 			if websocket.IsUnexpectedCloseError(err,
 				websocket.CloseGoingAway,
 				websocket.CloseNormalClosure,
@@ -452,6 +472,7 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 			}
 			return
 		}
+		s.config.metrics.MessageReceived(s.roomID, len(data))
 		if fn := s.config.onMessage; fn != nil {
 			frame, decodeErr := s.config.codec.Decode(data)
 			if decodeErr != nil {
@@ -512,6 +533,8 @@ func (s *session) writePump(transport *websocket.Conn, pumpQuit, pumpDone chan s
 				s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
 				return
 			}
+			s.config.metrics.MessageSent(s.roomID, s.id, len(data))
+			s.config.metrics.SendBufferUtilization(s.roomID, s.id, len(s.send), cap(s.send))
 
 		case <-ticker.C:
 			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
