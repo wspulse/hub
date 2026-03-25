@@ -181,14 +181,18 @@ func (h *hub) handleRegister(message registerMessage) {
 		newSession.resumeBuffer = newRingBuffer(h.config.sendBufferSize)
 	}
 
+	var roomCreated bool
 	h.mu.Lock()
 	if h.rooms[message.roomID] == nil {
 		h.rooms[message.roomID] = make(map[string]*session)
-		h.config.metrics.RoomCreated(message.roomID)
+		roomCreated = true
 	}
 	h.rooms[message.roomID][message.connectionID] = newSession
 	h.connectionsByID[message.connectionID] = newSession
 	h.mu.Unlock()
+	if roomCreated {
+		h.config.metrics.RoomCreated(message.roomID)
+	}
 
 	newSession.attachWS(message.transport, h, nil)
 	h.config.metrics.ConnectionOpened(message.roomID, message.connectionID)
@@ -442,18 +446,22 @@ func (h *hub) disconnectSession(target *session, err error, reason DisconnectRea
 func (h *hub) removeSession(target *session) {
 	target.cancelGraceTimer()
 
+	var roomDestroyed bool
 	h.mu.Lock()
 	if room := h.rooms[target.roomID]; room != nil && room[target.id] == target {
 		delete(room, target.id)
 		if len(room) == 0 {
 			delete(h.rooms, target.roomID)
-			h.config.metrics.RoomDestroyed(target.roomID)
+			roomDestroyed = true
 		}
 	}
 	if h.connectionsByID[target.id] == target {
 		delete(h.connectionsByID, target.id)
 	}
 	h.mu.Unlock()
+	if roomDestroyed {
+		h.config.metrics.RoomDestroyed(target.roomID)
+	}
 }
 
 // shutdown closes every active session. Called once by run() when done fires.
@@ -472,18 +480,34 @@ func (h *hub) shutdown() {
 	h.config.logger.Info("wspulse: hub shutting down",
 		zap.Int("active_sessions", sessionCount),
 	)
+	type closedInfo struct {
+		roomID       string
+		connectionID string
+		duration     time.Duration
+	}
+	var closedInfos []closedInfo
+	var destroyedRooms []string
 	for roomID, room := range h.rooms {
 		for _, target := range room {
 			target.cancelGraceTimer()
-			h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), DisconnectServerClose)
+			closedInfos = append(closedInfos, closedInfo{target.roomID, target.id, time.Since(target.connectedAt)})
 			_ = target.Close()
 			disconnected = append(disconnected, target)
 		}
-		h.config.metrics.RoomDestroyed(roomID)
+		destroyedRooms = append(destroyedRooms, roomID)
 	}
 	h.rooms = make(map[string]map[string]*session)
 	h.connectionsByID = make(map[string]*session)
 	h.mu.Unlock()
+
+	// Emit metrics outside the lock to avoid deadlocks if the
+	// MetricsCollector calls back into server APIs.
+	for _, info := range closedInfos {
+		h.config.metrics.ConnectionClosed(info.roomID, info.connectionID, info.duration, DisconnectServerClose)
+	}
+	for _, roomID := range destroyedRooms {
+		h.config.metrics.RoomDestroyed(roomID)
+	}
 
 	// Drain in-flight register messages to prevent goroutine leaks.
 	for {

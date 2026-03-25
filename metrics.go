@@ -51,7 +51,7 @@ const (
 //	    // custom implementation
 //	}
 //
-// This ensures new methods added to MetricsCollector in future minor
+// This ensures new methods added to MetricsCollector in future
 // versions are automatically satisfied by the embedded no-op defaults.
 type MetricsCollector interface {
 	// ConnectionOpened is called when a new session is created and registered.
