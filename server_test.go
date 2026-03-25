@@ -2,7 +2,10 @@ package wspulse_test
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -356,6 +359,36 @@ func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(4096, 4096))
 	t.Cleanup(srv.Close)
+}
+
+// TestServer_ConnectFunc_RejectBody_NoLeak verifies the HTTP 401 response
+// body is a generic "unauthorized" string and does not leak the internal
+// error from ConnectFunc. This unit test runs in the default make check
+// gate (no integration tag required).
+func TestServer_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
+		return "", "", errors.New("internal: secret db details")
+	})
+	t.Cleanup(srv.Close)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if got := strings.TrimSpace(string(body)); got != "unauthorized" {
+		t.Errorf("response body = %q, want %q (internal error must not leak)", got, "unauthorized")
+	}
 }
 
 func TestMain(m *testing.M) {

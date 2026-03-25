@@ -174,7 +174,10 @@ func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("want 401, got %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
 	if got := strings.TrimSpace(string(body)); got != "unauthorized" {
 		t.Errorf("response body = %q, want %q (internal error must not leak)", got, "unauthorized")
 	}
@@ -756,7 +759,9 @@ func TestServer_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JSONCodec.Encode failed: %v", err)
 	}
-	_ = c.WriteMessage(websocket.TextMessage, data)
+	if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+		t.Fatalf("WriteMessage failed: %v", err)
+	}
 
 	select {
 	case got := <-disconnectErr:

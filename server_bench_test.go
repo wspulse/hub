@@ -68,10 +68,11 @@ func benchBroadcast(b *testing.B, roomSize int) {
 	)
 
 	ts, conns := dialN(b, srv, roomSize)
-	defer ts.Close()
-	defer srv.Close()
+	b.Cleanup(ts.Close)
+	b.Cleanup(srv.Close)
 	for _, c := range conns {
-		defer func() { _ = c.Close() }()
+		conn := c
+		b.Cleanup(func() { _ = conn.Close() })
 	}
 
 	// Wait for all connections to register.
@@ -111,8 +112,8 @@ func BenchmarkSend(b *testing.B) {
 	)
 
 	ts := httptest.NewServer(srv)
-	defer ts.Close()
-	defer srv.Close()
+	b.Cleanup(ts.Close)
+	b.Cleanup(srv.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
@@ -120,7 +121,7 @@ func BenchmarkSend(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	defer func() { _ = c.Close() }()
+	b.Cleanup(func() { _ = c.Close() })
 
 	select {
 	case <-connected:
@@ -167,8 +168,8 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	)
 
 	ts := httptest.NewServer(srv)
-	defer ts.Close()
-	defer srv.Close()
+	b.Cleanup(ts.Close)
+	b.Cleanup(srv.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
@@ -176,7 +177,7 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	defer func() { _ = c.Close() }()
+	b.Cleanup(func() { _ = c.Close() })
 
 	select {
 	case <-connected:

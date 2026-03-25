@@ -23,10 +23,11 @@ const (
 // has a unique, non-empty ID. Use a non-empty connectionID when the application needs
 // deterministic IDs (e.g. for Server.Send and Server.Kick).
 //
-// On session resumption (reconnect within the resume window), the roomID
-// returned by ConnectFunc is ignored — the session retains its original room
-// assignment from the initial connection. Only the first ConnectFunc call for
-// a given connectionID determines the room.
+// On session resumption (reconnect of a suspended session within the resume
+// window), the roomID returned by ConnectFunc is ignored — the session retains
+// its original room assignment from the initial connection. For new sessions
+// (including when a duplicate connectionID replaces an existing connected
+// session), the roomID from ConnectFunc determines the room.
 type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 
 // ServerOption configures a Server.
