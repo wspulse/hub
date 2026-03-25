@@ -157,13 +157,13 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 - **Swappable codec** — JSON by default; implement the `Codec` interface to plug in any encoding (binary, Protobuf, MessagePack, etc.).
 - **Kick** — `Server.Kick(connectionID)` always destroys the session immediately, bypassing the resume window.
 - **Graceful shutdown** — `Server.Close()` sends close frames to all connected clients, drains in-flight registrations, and fires `OnDisconnect` for every session.
-- **Metrics** — optional `MetricsCollector` interface for observability; default is `NoopCollector` (zero cost). See [Metrics](#metrics) below.
+- **Metrics** — optional `MetricsCollector` interface for observability; default is `NoopCollector` (minimal overhead). See [Metrics](#metrics) below.
 
 ---
 
 ## Metrics
 
-wspulse/server exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (zero overhead).
+wspulse/server exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (minimal overhead). Embed `NoopCollector` in custom implementations for forward-compatible additions.
 
 ```go
 // Use a contrib adapter (e.g. wspulse/metrics-prometheus or wspulse/metrics-otel),
@@ -179,7 +179,7 @@ The interface covers:
 
 | Hook | Description |
 | --- | --- |
-| `ConnectionOpened` / `ConnectionClosed` | Session lifecycle with duration |
+| `ConnectionOpened` / `ConnectionClosed` | Session lifecycle with duration and disconnect reason |
 | `RoomCreated` / `RoomDestroyed` | Room allocation and deallocation |
 | `MessageReceived` / `MessageSent` / `MessageBroadcast` | Throughput with byte sizes and fan-out |
 | `FrameDropped` / `SendBufferUtilization` | Backpressure visibility |

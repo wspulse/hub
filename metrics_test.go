@@ -21,7 +21,7 @@ func TestNoopCollector_AllMethodsCallable(t *testing.T) {
 	t.Parallel()
 	var c wspulse.NoopCollector
 	c.ConnectionOpened("room", "conn")
-	c.ConnectionClosed("room", "conn", time.Second)
+	c.ConnectionClosed("room", "conn", time.Second, wspulse.DisconnectNormal)
 	c.ResumeAttempt("room", "conn", true)
 	c.RoomCreated("room")
 	c.RoomDestroyed("room")
@@ -84,6 +84,7 @@ type metricsEvent struct {
 	success      bool
 	used         int
 	capacity     int
+	reason       wspulse.DisconnectReason
 }
 
 func (r *recordingCollector) record(e metricsEvent) {
@@ -95,8 +96,8 @@ func (r *recordingCollector) record(e metricsEvent) {
 func (r *recordingCollector) ConnectionOpened(roomID, connectionID string) {
 	r.record(metricsEvent{name: "ConnectionOpened", roomID: roomID, connectionID: connectionID})
 }
-func (r *recordingCollector) ConnectionClosed(roomID, connectionID string, duration time.Duration) {
-	r.record(metricsEvent{name: "ConnectionClosed", roomID: roomID, connectionID: connectionID, duration: duration})
+func (r *recordingCollector) ConnectionClosed(roomID, connectionID string, duration time.Duration, reason wspulse.DisconnectReason) {
+	r.record(metricsEvent{name: "ConnectionClosed", roomID: roomID, connectionID: connectionID, duration: duration, reason: reason})
 }
 func (r *recordingCollector) ResumeAttempt(roomID, connectionID string, success bool) {
 	r.record(metricsEvent{name: "ResumeAttempt", roomID: roomID, connectionID: connectionID, success: success})

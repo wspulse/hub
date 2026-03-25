@@ -2,6 +2,34 @@ package wspulse
 
 import "time"
 
+// DisconnectReason describes why a connection was closed.
+// Used as a label-friendly parameter in ConnectionClosed to let metrics
+// backends (Prometheus, OTel, etc.) distinguish disconnect causes.
+type DisconnectReason string
+
+const (
+	// DisconnectNormal indicates the connection was closed normally:
+	// the transport died (no resume configured), or the application
+	// called Connection.Close() on a suspended session.
+	DisconnectNormal DisconnectReason = "normal"
+
+	// DisconnectKick indicates the connection was terminated by
+	// an explicit Server.Kick() call.
+	DisconnectKick DisconnectReason = "kick"
+
+	// DisconnectGraceExpired indicates the resume window elapsed
+	// without the client reconnecting.
+	DisconnectGraceExpired DisconnectReason = "grace_expired"
+
+	// DisconnectServerClose indicates the connection was terminated
+	// because Server.Close() shut down the server.
+	DisconnectServerClose DisconnectReason = "server_close"
+
+	// DisconnectDuplicate indicates the connection was replaced by
+	// a new connection with the same connectionID.
+	DisconnectDuplicate DisconnectReason = "duplicate"
+)
+
 // MetricsCollector defines instrumentation hooks for wspulse server.
 // Each method corresponds to a single lifecycle or throughput event.
 //
@@ -10,20 +38,37 @@ import "time"
 //
 // All methods are fire-and-forget: they do not return values. If the
 // underlying metrics backend encounters an error, the implementation
-// should handle it internally (e.g. log and skip).
+// should handle it internally (e.g. log and skip). If an implementation
+// panics, the calling goroutine (hub, readPump, or writePump) will crash;
+// implementations must never panic.
+//
+// For forward-compatible custom implementations, embed NoopCollector:
+//
+//	type MyCollector struct {
+//	    wspulse.NoopCollector // provides no-op defaults for future methods
+//	}
+//	func (c *MyCollector) ConnectionOpened(roomID, connectionID string) {
+//	    // custom implementation
+//	}
+//
+// This ensures new methods added to MetricsCollector in future minor
+// versions are automatically satisfied by the embedded no-op defaults.
 type MetricsCollector interface {
 	// ConnectionOpened is called when a new session is created and registered.
 	ConnectionOpened(roomID, connectionID string)
 
 	// ConnectionClosed is called when a session is terminated. duration is the
 	// total logical session lifetime from creation to destruction, including
-	// any time spent in the suspended state.
-	ConnectionClosed(roomID, connectionID string, duration time.Duration)
+	// any time spent in the suspended state. reason indicates why the session
+	// was closed (see DisconnectReason constants).
+	ConnectionClosed(roomID, connectionID string, duration time.Duration, reason DisconnectReason)
 
 	// ResumeAttempt is called when a suspended session is successfully resumed
-	// by a reconnecting client. Currently only emitted on success (success=true)
-	// because a failed resume (reconnect after grace expiry) results in a new
-	// session rather than an identifiable failed-resume event.
+	// by a reconnecting client. In the current implementation, success is
+	// always true: a failed resume (reconnect after grace expiry) results in
+	// a new session via ConnectionOpened rather than an identifiable
+	// failed-resume event. The success parameter is reserved for future use
+	// when failed resume detection is implemented.
 	ResumeAttempt(roomID, connectionID string, success bool)
 
 	// RoomCreated is called when the first connection joins a room,
@@ -50,11 +95,17 @@ type MetricsCollector interface {
 	// FrameDropped is called whenever a frame is discarded due to send buffer
 	// backpressure. This covers drops from Send (buffer full), Broadcast
 	// (drop-oldest), and resume drain (buffer full during replay).
+	// In the drop-oldest path, two FrameDropped events may fire: one for the
+	// oldest frame evicted and one for the new frame if it still cannot be
+	// enqueued — both represent real frame loss.
 	FrameDropped(roomID, connectionID string)
 
 	// SendBufferUtilization is called in the writePump after every successful
 	// write. used and capacity report the current send channel occupancy.
-	// Adapter implementations may apply sampling or throttling as needed.
+	//
+	// This method is called once per message write. For high-throughput
+	// connections (e.g. 10k msg/s), expect the same call rate per connection.
+	// Implementations should apply sampling, batching, or throttling as needed.
 	SendBufferUtilization(roomID, connectionID string, used, capacity int)
 
 	// PongTimeout is called in the readPump when a read deadline expires,
@@ -63,8 +114,14 @@ type MetricsCollector interface {
 }
 
 // NoopCollector is the default MetricsCollector that discards all events.
-// All methods are no-ops on a value receiver, allowing the compiler to
-// inline them at zero cost.
+// All methods are value-receiver no-ops with minimal overhead.
+//
+// Embed NoopCollector in custom implementations for forward-compatible
+// additions to the MetricsCollector interface:
+//
+//	type MyCollector struct {
+//	    wspulse.NoopCollector
+//	}
 type NoopCollector struct{}
 
 // compile-time check: NoopCollector must satisfy MetricsCollector.
@@ -74,7 +131,7 @@ var _ MetricsCollector = NoopCollector{}
 func (NoopCollector) ConnectionOpened(_, _ string) {}
 
 // ConnectionClosed is a no-op. See MetricsCollector.ConnectionClosed.
-func (NoopCollector) ConnectionClosed(_, _ string, _ time.Duration) {}
+func (NoopCollector) ConnectionClosed(_, _ string, _ time.Duration, _ DisconnectReason) {}
 
 // ResumeAttempt is a no-op. See MetricsCollector.ResumeAttempt.
 func (NoopCollector) ResumeAttempt(_, _ string, _ bool) {}

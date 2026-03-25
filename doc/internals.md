@@ -270,8 +270,8 @@ If the hub has already shut down (`<-hub.done`), `Kick` returns
 ## 6. Metrics
 
 wspulse/server exposes an optional `MetricsCollector` interface for
-instrumentation. The default is `NoopCollector{}`, which discards all
-events at zero cost (the compiler inlines value-receiver no-ops).
+instrumentation. The default is `NoopCollector{}`, a no-op implementation
+that discards all events with minimal overhead.
 
 ### Configuration
 
@@ -303,7 +303,7 @@ must be safe for concurrent use.
 | `PongTimeout`           | readPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
-| `FrameDropped`          | hub, readPump, writePump, or transition goroutine (multiple call sites) |
+| `FrameDropped`          | hub goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
 
 ### Connection duration
 
@@ -312,3 +312,7 @@ must be safe for concurrent use.
 once when the session is created in `handleRegister`. This means the
 duration reflects the **logical session lifetime**, including any time
 spent in the suspended state during session resumption.
+
+`ConnectionClosed` also receives a `reason` parameter of type
+`DisconnectReason` that indicates why the session was terminated.
+See the `DisconnectReason` constants for possible values.

@@ -153,7 +153,7 @@ func (h *hub) handleRegister(message registerMessage) {
 			h.config.logger.Warn("wspulse: duplicate conn_id, kicking existing session",
 				zap.String("conn_id", message.connectionID),
 			)
-			h.disconnectSession(existing, ErrDuplicateConnectionID)
+			h.disconnectSession(existing, ErrDuplicateConnectionID, DisconnectDuplicate)
 
 		case stateClosed:
 			// Close() was called externally before the hub processed the
@@ -163,7 +163,7 @@ func (h *hub) handleRegister(message registerMessage) {
 			h.config.logger.Debug("wspulse: stale closed session removed",
 				zap.String("conn_id", message.connectionID),
 			)
-			h.disconnectSession(existing, nil)
+			h.disconnectSession(existing, nil, DisconnectNormal)
 		}
 	}
 
@@ -251,7 +251,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 				h.config.logger.Debug("wspulse: transport-died for closed session, cleaning up",
 					zap.String("conn_id", target.id),
 				)
-				h.disconnectSession(target, message.err)
+				h.disconnectSession(target, message.err, DisconnectNormal)
 			} else {
 				h.config.logger.Debug("wspulse: transport-died for unregistered closed session, skipping",
 					zap.String("conn_id", target.id),
@@ -287,7 +287,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
 				zap.String("conn_id", target.id),
 			)
-			h.disconnectSession(target, nil)
+			h.disconnectSession(target, nil, DisconnectNormal)
 			return
 		}
 		target.graceTimer = timer
@@ -308,7 +308,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 		zap.String("conn_id", target.id),
 		zap.Error(message.err),
 	)
-	h.disconnectSession(target, message.err)
+	h.disconnectSession(target, message.err, DisconnectNormal)
 }
 
 // handleGraceExpired destroys a session whose resume window has elapsed
@@ -350,12 +350,13 @@ func (h *hub) handleGraceExpired(message graceExpiredMessage) {
 		h.config.logger.Info("wspulse: session expired",
 			zap.String("conn_id", target.id),
 		)
+		h.disconnectSession(target, nil, DisconnectGraceExpired)
 	} else {
 		h.config.logger.Info("wspulse: suspended session closed by application",
 			zap.String("conn_id", target.id),
 		)
+		h.disconnectSession(target, nil, DisconnectNormal)
 	}
-	h.disconnectSession(target, nil)
 }
 
 // handleKick removes a session, closes it, and fires onDisconnect.
@@ -377,7 +378,7 @@ func (h *hub) handleKick(request kickRequest) {
 		zap.String("conn_id", request.connectionID),
 	)
 
-	h.disconnectSession(target, nil)
+	h.disconnectSession(target, nil, DisconnectKick)
 	request.result <- nil
 }
 
@@ -428,9 +429,9 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 // disconnectSession removes the session from hub maps, closes it, and fires
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
-func (h *hub) disconnectSession(target *session, err error) {
+func (h *hub) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
-	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt))
+	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
 	_ = target.Close()
 	if fn := h.config.onDisconnect; fn != nil {
 		go fn(target, err)
@@ -471,12 +472,14 @@ func (h *hub) shutdown() {
 	h.config.logger.Info("wspulse: hub shutting down",
 		zap.Int("active_sessions", sessionCount),
 	)
-	for _, room := range h.rooms {
+	for roomID, room := range h.rooms {
 		for _, target := range room {
 			target.cancelGraceTimer()
+			h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), DisconnectServerClose)
 			_ = target.Close()
 			disconnected = append(disconnected, target)
 		}
+		h.config.metrics.RoomDestroyed(roomID)
 	}
 	h.rooms = make(map[string]map[string]*session)
 	h.connectionsByID = make(map[string]*session)
