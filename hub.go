@@ -410,6 +410,13 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 		zap.String("room_id", message.roomID),
 		zap.Int("recipients", len(h.scratch)),
 	)
+
+	// Clear pointers so disconnected sessions can be GC'd.
+	// Without this, the backing array retains stale *session pointers
+	// in its capacity area after h.scratch[:0] on the next broadcast.
+	for i := range h.scratch {
+		h.scratch[i] = nil
+	}
 }
 
 // disconnectSession removes the session from hub maps, closes it, and fires
