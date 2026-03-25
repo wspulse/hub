@@ -203,6 +203,10 @@ WS2 client reconnects with same connectionID
   → onTransportRestore fires; no onConnect / onDisconnect fired
 ```
 
+Note: on resume, the `roomID` returned by the new `ConnectFunc` call is
+ignored. The session retains its original room assignment from the initial
+connection.
+
 ### Resume Buffer
 
 During the suspended state, frames sent via `session.Send()` or

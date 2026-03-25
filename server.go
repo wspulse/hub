@@ -82,8 +82,8 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 		hub:     h,
 		hubDone: hubDone,
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  config.upgraderReadBufferSize,
+			WriteBufferSize: config.upgraderWriteBufferSize,
 			CheckOrigin:     config.checkOrigin,
 		},
 	}
@@ -110,7 +110,7 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.config.logger.Debug("wspulse: connect rejected",
 			zap.Error(err),
 		)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	if connectionID == "" {

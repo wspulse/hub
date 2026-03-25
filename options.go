@@ -18,47 +18,57 @@ const (
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
 // roomID and connectionID for the new connection.
-// Returning a non-nil error rejects the upgrade with HTTP 401 and the error text as the body.
+// Returning a non-nil error rejects the upgrade with HTTP 401.
 // If connectionID is empty the Server assigns a random UUID so that every connection
 // has a unique, non-empty ID. Use a non-empty connectionID when the application needs
 // deterministic IDs (e.g. for Server.Send and Server.Kick).
+//
+// On session resumption (reconnect of a suspended session within the resume
+// window), the roomID returned by ConnectFunc is ignored — the session retains
+// its original room assignment from the initial connection. For new sessions
+// (including when a duplicate connectionID replaces an existing connected
+// session), the roomID from ConnectFunc determines the room.
 type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 
 // ServerOption configures a Server.
 type ServerOption func(*serverConfig) //nolint:revive
 
 type serverConfig struct {
-	connect            ConnectFunc
-	onConnect          func(Connection)
-	onMessage          func(Connection, Frame)
-	onDisconnect       func(Connection, error)
-	onTransportDrop    func(Connection, error)
-	onTransportRestore func(Connection)
-	pingPeriod         time.Duration
-	pongWait           time.Duration
-	writeWait          time.Duration
-	maxMessageSize     int64
-	sendBufferSize     int
-	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
-	codec              Codec
-	checkOrigin        func(r *http.Request) bool
-	logger             *zap.Logger
-	clock              clock
+	connect                 ConnectFunc
+	onConnect               func(Connection)
+	onMessage               func(Connection, Frame)
+	onDisconnect            func(Connection, error)
+	onTransportDrop         func(Connection, error)
+	onTransportRestore      func(Connection)
+	pingPeriod              time.Duration
+	pongWait                time.Duration
+	writeWait               time.Duration
+	maxMessageSize          int64
+	sendBufferSize          int
+	resumeWindow            time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
+	codec                   Codec
+	checkOrigin             func(r *http.Request) bool
+	logger                  *zap.Logger
+	clock                   clock
+	upgraderReadBufferSize  int
+	upgraderWriteBufferSize int
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
 	return &serverConfig{
-		connect:        connect,
-		pingPeriod:     10 * time.Second,
-		pongWait:       30 * time.Second,
-		writeWait:      10 * time.Second,
-		maxMessageSize: 512,
-		sendBufferSize: 256,
-		resumeWindow:   0,
-		codec:          JSONCodec,
-		checkOrigin:    func(*http.Request) bool { return true },
-		logger:         zap.NewNop(),
-		clock:          realClock{},
+		connect:                 connect,
+		pingPeriod:              10 * time.Second,
+		pongWait:                30 * time.Second,
+		writeWait:               10 * time.Second,
+		maxMessageSize:          512,
+		sendBufferSize:          256,
+		resumeWindow:            0,
+		codec:                   JSONCodec,
+		checkOrigin:             func(*http.Request) bool { return true },
+		logger:                  zap.NewNop(),
+		clock:                   realClock{},
+		upgraderReadBufferSize:  1024,
+		upgraderWriteBufferSize: 1024,
 	}
 }
 
@@ -222,4 +232,21 @@ func WithResumeWindow(d time.Duration) ServerOption {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
 	}
 	return func(c *serverConfig) { c.resumeWindow = d }
+}
+
+// WithUpgraderBufferSize sets the I/O buffer sizes for the WebSocket upgrader.
+// Larger buffers reduce per-write allocations for applications that send
+// large messages. Default: 1024 bytes for both read and write.
+// Panics if either size is not positive.
+func WithUpgraderBufferSize(readSize, writeSize int) ServerOption {
+	if readSize <= 0 {
+		panic("wspulse: WithUpgraderBufferSize: readSize must be positive")
+	}
+	if writeSize <= 0 {
+		panic("wspulse: WithUpgraderBufferSize: writeSize must be positive")
+	}
+	return func(c *serverConfig) {
+		c.upgraderReadBufferSize = readSize
+		c.upgraderWriteBufferSize = writeSize
+	}
 }
