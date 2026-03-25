@@ -26,15 +26,22 @@ var (
 // PanicError wraps a panic recovered from an OnMessage callback.
 // When an OnMessage handler panics, the readPump recovers the panic and
 // terminates the connection (or suspends it when session resumption is
-// enabled). The transport error (including PanicError) is reported to the
-// OnTransportDrop callback so applications can distinguish transport
-// failures from handler panics using errors.As.
+// enabled).
+//
+// Delivery:
+//   - When resumption is disabled (resumeWindow == 0, the default), the
+//     connection is closed immediately and the PanicError is delivered via
+//     the OnDisconnect callback's error parameter. OnTransportDrop is not
+//     invoked in this mode.
+//   - When resumption is enabled (resumeWindow > 0), the transport error
+//     (including PanicError) is reported to the OnTransportDrop callback so
+//     applications can distinguish transport failures from handler panics
+//     using errors.As. OnDisconnect may later be invoked on grace expiry
+//     with a nil error; callers must not rely on PanicError always being
+//     delivered via OnDisconnect.
 //
 // Behaviour: a panic in OnMessage always kills the connection. This is
 // intentional — corrupted handler state should not process further messages.
-// When resumption is enabled, OnDisconnect may later be invoked on grace
-// expiry with a nil error; callers must not rely on PanicError always being
-// delivered via OnDisconnect.
 type PanicError struct {
 	// Value is the value passed to panic().
 	Value any

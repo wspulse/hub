@@ -4,7 +4,7 @@
 
 ### Added
 
-- `PanicError` exported type — wraps panics recovered from `OnMessage` handlers with the panic value and goroutine stack trace; passed to `OnDisconnect` so applications can distinguish handler panics from transport failures via `errors.As`
+- `PanicError` exported type — wraps panics recovered from `OnMessage` handlers with the panic value and goroutine stack trace; delivered to `OnDisconnect` when resumption is disabled, or to `OnTransportDrop` when resumption is enabled (in which case `OnDisconnect` may later fire with a nil error); use `errors.As` on whichever callback error is non-nil to distinguish handler panics from transport failures
 - `WithUpgraderBufferSize(readSize, writeSize int)` option — configures the WebSocket upgrader I/O buffer sizes (default 1024 bytes each)
 - Benchmarks for ring buffer, broadcast fan-out, direct Send throughput, and drop-oldest backpressure
 

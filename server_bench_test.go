@@ -1,5 +1,3 @@
-//go:build integration
-
 package wspulse_test
 
 import (
@@ -73,7 +71,7 @@ func benchBroadcast(b *testing.B, roomSize int) {
 	defer ts.Close()
 	defer srv.Close()
 	for _, c := range conns {
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 	}
 
 	// Wait for all connections to register.
@@ -109,6 +107,7 @@ func BenchmarkSend(b *testing.B) {
 			default:
 			}
 		}),
+		wspulse.WithSendBufferSize(4096), // large buffer to avoid filling during benchmark
 	)
 
 	ts := httptest.NewServer(srv)
@@ -121,7 +120,7 @@ func BenchmarkSend(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	select {
 	case <-connected:
@@ -143,17 +142,22 @@ func BenchmarkSend(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		// ErrSendBufferFull is expected at benchmark speed — the drain
+		// goroutine cannot keep up with the enqueue rate. The benchmark
+		// measures raw encode+enqueue cost including both paths.
 		_ = conn.Send(frame)
 	}
 }
 
 func BenchmarkEnqueue_DropOldest(b *testing.B) {
+	var conn wspulse.Connection
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
 			return "bench-room", "bench-conn", nil
 		},
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
+			conn = c
 			select {
 			case connected <- struct{}{}:
 			default:
@@ -172,7 +176,7 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	select {
 	case <-connected:
@@ -181,15 +185,18 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	}
 
 	// Do NOT drain — let buffer fill so broadcast hits drop-oldest path.
+	// Pre-fill the send buffer via direct Send (bypasses hub, synchronous
+	// enqueue) to avoid a racy sleep.
 	frame := wspulse.Frame{Event: "bench", Payload: []byte(`{"v":1}`)}
-
-	// Pre-fill the buffer.
-	_ = srv.Broadcast("bench-room", frame)
-	time.Sleep(50 * time.Millisecond) // let hub process
+	if err := conn.Send(frame); err != nil {
+		b.Fatalf("prefill Send failed: %v", err)
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = srv.Broadcast("bench-room", frame)
+		if err := srv.Broadcast("bench-room", frame); err != nil {
+			b.Fatalf("Broadcast failed: %v", err)
+		}
 	}
 }
