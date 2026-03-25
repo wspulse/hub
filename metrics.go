@@ -38,9 +38,12 @@ const (
 //
 // All methods are fire-and-forget: they do not return values. If the
 // underlying metrics backend encounters an error, the implementation
-// should handle it internally (e.g. log and skip). If an implementation
-// panics, the calling goroutine (hub, readPump, or writePump) will crash;
-// implementations must never panic.
+// should handle it internally (e.g. log and skip).
+//
+// Hooks are invoked synchronously on hot paths; implementations must
+// return quickly and must not panic. Implementations must not call back
+// into the same Server synchronously (e.g. Kick, Send, Broadcast) as
+// this can deadlock the hub event loop.
 //
 // For forward-compatible custom implementations, embed NoopCollector:
 //

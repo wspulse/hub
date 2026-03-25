@@ -405,6 +405,7 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 		return
 	}
 
+	enqueued := 0
 	for _, target := range h.scratch {
 		select {
 		case <-target.done:
@@ -415,11 +416,12 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 		// Use enqueue with drop-oldest so suspended sessions buffer to
 		// resumeBuffer and connected sessions apply backpressure uniformly.
 		_ = target.enqueue(message.data, true)
+		enqueued++
 	}
-	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), len(h.scratch))
+	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), enqueued)
 	h.config.logger.Debug("wspulse: broadcast dispatched",
 		zap.String("room_id", message.roomID),
-		zap.Int("recipients", len(h.scratch)),
+		zap.Int("recipients", enqueued),
 	)
 
 	// Clear pointers so disconnected sessions can be GC'd.

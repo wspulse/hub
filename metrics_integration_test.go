@@ -400,11 +400,16 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	// Third broadcast to ensure at least one drop-oldest fires.
 	_ = srv.Broadcast("drop-room", frame)
 
-	// Allow hub to process broadcasts.
-	time.Sleep(50 * time.Millisecond)
-
-	if n := rec.countByName("FrameDropped"); n < 1 {
-		t.Errorf("FrameDropped: want >= 1, got %d", n)
+	// Poll until FrameDropped is observed instead of sleeping.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if n := rec.countByName("FrameDropped"); n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for FrameDropped, got %d", rec.countByName("FrameDropped"))
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
