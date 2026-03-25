@@ -191,19 +191,27 @@ func TestIntegration_MetricsCollector_MessageFlow(t *testing.T) {
 	_, _, _ = c1.ReadMessage()
 	_, _, _ = c2.ReadMessage()
 
+	// Poll until all expected metrics are recorded. SendBufferUtilization
+	// fires in the writePump after each write — on CI under the race
+	// detector the second writePump may not have recorded the event by the
+	// time ReadMessage returns on the client side.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if rec.countByName("MessageSent") >= 2 && rec.countByName("SendBufferUtilization") >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out: MessageSent=%d (want 2), SendBufferUtilization=%d (want 2)",
+				rec.countByName("MessageSent"), rec.countByName("SendBufferUtilization"))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	if n := rec.countByName("MessageReceived"); n != 1 {
 		t.Errorf("MessageReceived: want 1, got %d", n)
 	}
 	if n := rec.countByName("MessageBroadcast"); n != 1 {
 		t.Errorf("MessageBroadcast: want 1, got %d", n)
-	}
-	// 2 connections in room → 2 MessageSent.
-	if n := rec.countByName("MessageSent"); n != 2 {
-		t.Errorf("MessageSent: want 2, got %d", n)
-	}
-	// SendBufferUtilization fires after each MessageSent.
-	if n := rec.countByName("SendBufferUtilization"); n != 2 {
-		t.Errorf("SendBufferUtilization: want 2, got %d", n)
 	}
 }
 
