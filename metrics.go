@@ -66,12 +66,17 @@ type MetricsCollector interface {
 	// was closed (see DisconnectReason constants).
 	ConnectionClosed(roomID, connectionID string, duration time.Duration, reason DisconnectReason)
 
-	// ResumeAttempt is called when a suspended session is successfully resumed
-	// by a reconnecting client. In the current implementation, success is
-	// always true: a failed resume (reconnect after grace expiry) results in
-	// a new session via ConnectionOpened rather than an identifiable
-	// failed-resume event. The success parameter is reserved for future use
-	// when failed resume detection is implemented.
+	// ResumeAttempt is called when a client attempts to resume a suspended session.
+	// success is true when the session was successfully resumed (transport swap),
+	// and false when the session no longer exists (grace window expired).
+	//
+	// A failed resume (success=false) is emitted in two scenarios:
+	//   - ServeHTTP pre-check: client connects with ?resume=true but
+	//     hub.get(connectionID) returns nil. HTTP 410 is returned.
+	//   - Hub race case: pre-check passed but the session expired between
+	//     the check and hub processing. WS close 4100 is sent.
+	//
+	// In both failure cases, no session is created and ConnectionOpened is not emitted.
 	ResumeAttempt(roomID, connectionID string, success bool)
 
 	// RoomCreated is called when the first connection joins a room,

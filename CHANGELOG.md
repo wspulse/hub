@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Resume intent detection: clients reconnecting with `?resume=true` query parameter are rejected with HTTP 410 Gone when the session has expired, and `ResumeAttempt(roomID, connectionID, false)` is emitted
+- `CloseSessionExpired` (4100) re-exported from core — WebSocket close code for the hub race case where the session expires between HTTP pre-check and hub processing
+- `registerMessage.resumeIntent` internal field — carries resume intent from ServeHTTP to the hub
+
+### Changed
+
+- `ResumeAttempt` metric now fires with `success=false` for failed resume attempts (previously only fired with `success=true` on successful resume)
+- `ResumeAttempt` is now called from the ServeHTTP goroutine (failed pre-check) in addition to the hub goroutine
+
 ## [0.5.0] - 2026-03-25
 
 ### Added

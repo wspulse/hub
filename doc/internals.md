@@ -234,6 +234,70 @@ effective window = pongWait + resumeWindow
 The client's exponential backoff reconnect (1 s, 2 s, 4 s, 8 s, ...) can
 attempt multiple retries within this window.
 
+### Resume Intent (Failed Resume Detection)
+
+When a client reconnects, it may include `?resume=true` in the URL to signal
+that it intends to resume an existing suspended session. This allows the
+server to distinguish between "new connection" and "reconnect attempt" and
+to detect failed resume attempts for metrics.
+
+#### ServeHTTP Pre-check
+
+```
+ConnectFunc(r) -> (roomID, connectionID)
+
+if ?resume=true:
+    if hub.get(connectionID) != nil:
+        -> proceed with upgrade + registerMessage (hub handles resume)
+    else:
+        -> ResumeAttempt(roomID, connectionID, false)
+        -> HTTP 410 Gone (no upgrade, no session created)
+        -> return
+else:
+    -> proceed with upgrade + registerMessage (normal new connection)
+```
+
+The pre-check uses `hub.get(connectionID)` which is a concurrent-safe
+`RLock` read -- the same pattern used by `Server.Send()` from external
+goroutines. This is a read, not a mutation, so it does not violate hub
+serialization.
+
+Rejecting at the HTTP layer (before WebSocket upgrade) avoids:
+1. An unnecessary upgrade handshake and teardown.
+2. Managing a WebSocket connection that will be immediately closed.
+3. Ambiguity about whether the connection is new or a failed resume.
+
+#### Hub Race Case (handleRegister)
+
+A race window exists between the HTTP pre-check and hub processing:
+
+```
+t0: ServeHTTP pre-check: hub.get(connID) != nil -> proceed
+t1: grace timer fires -> hub removes session
+t2: hub processes registerMessage -> session no longer exists
+```
+
+This window is small (upgrade handshake + channel send + hub iteration,
+typically a few milliseconds) but must be handled correctly.
+
+When `registerMessage.resumeIntent` is true but the session no longer
+exists in the hub:
+
+```
+handleRegister(message):
+    existing = connectionsByID[message.connectionID]
+    if !existing && message.resumeIntent:
+        -> ResumeAttempt(roomID, connectionID, false)
+        -> send WS close frame (code 4100 CloseSessionExpired)
+        -> close transport
+        -> return (no session created)
+```
+
+The behavior is consistent with the HTTP 410 rejection: resume was
+requested but the session is gone, so the answer is no. The close code
+4100 (`CloseSessionExpired`) conveys the same semantics as HTTP 410 but
+within the WebSocket protocol layer.
+
 ### Kick Bypass
 
 `Server.Kick(connectionID)` always destroys the session immediately, bypassing
@@ -297,7 +361,7 @@ must be safe for concurrent use.
 | `RoomDestroyed`         | hub goroutine       |
 | `ConnectionOpened`      | hub goroutine       |
 | `ConnectionClosed`      | hub goroutine       |
-| `ResumeAttempt`         | hub goroutine       |
+| `ResumeAttempt`         | hub goroutine (success=true, race case false), ServeHTTP goroutine (pre-check false) |
 | `MessageBroadcast`      | hub goroutine       |
 | `MessageReceived`       | readPump goroutine  |
 | `PongTimeout`           | readPump goroutine  |

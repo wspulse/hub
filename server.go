@@ -97,6 +97,12 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 
 // ServeHTTP upgrades the HTTP connection to WebSocket.
 // ConnectFunc is called to authenticate; a non-nil error yields HTTP 401.
+//
+// Resume intent pre-check: when the client connects with ?resume=true, the
+// server checks whether the session still exists before upgrading. If the
+// session has expired (grace window elapsed), the server responds with
+// HTTP 410 Gone and emits ResumeAttempt(roomID, connectionID, false).
+// This avoids an unnecessary WebSocket upgrade for a doomed connection.
 func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Quick bail — hub is shutting down; don't upgrade or enqueue.
 	if s.hub.stopped.Load() {
@@ -117,6 +123,21 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		connectionID = uuid.NewString()
 	}
 
+	resumeIntent := r.URL.Query().Get("resume") == "true"
+
+	// Resume intent pre-check: if the client wants to resume but the
+	// session no longer exists, reject at the HTTP layer (410 Gone).
+	// hub.get() uses RLock — same concurrent-safe read pattern as Send().
+	if resumeIntent && s.hub.get(connectionID) == nil {
+		s.config.logger.Info("wspulse: resume rejected — session expired",
+			zap.String("conn_id", connectionID),
+			zap.String("room_id", roomID),
+		)
+		s.config.metrics.ResumeAttempt(roomID, connectionID, false)
+		http.Error(w, "session expired", http.StatusGone)
+		return
+	}
+
 	transport, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.config.logger.Error("wspulse: upgrade failed", zap.Error(err))
@@ -127,6 +148,7 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		connectionID: connectionID,
 		roomID:       roomID,
 		transport:    transport,
+		resumeIntent: resumeIntent,
 	}
 
 	s.config.logger.Debug("wspulse: connection upgraded",

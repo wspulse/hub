@@ -3,6 +3,7 @@
 package wspulse_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -541,5 +542,130 @@ func TestIntegration_MetricsCollector_Shutdown(t *testing.T) {
 	// Verify RoomDestroyed fired.
 	if n := rec.countByName("RoomDestroyed"); n != 1 {
 		t.Errorf("RoomDestroyed: want 1, got %d", n)
+	}
+}
+
+// TestIntegration_MetricsCollector_ResumeAttempt_Rejected verifies that when a
+// client reconnects with ?resume=true after the grace window has expired, the
+// server returns HTTP 410 Gone and emits ResumeAttempt(roomID, connectionID, false).
+// No ConnectionOpened should fire for the rejected reconnect attempt.
+func TestIntegration_MetricsCollector_ResumeAttempt_Rejected(t *testing.T) {
+	rec := &recordingCollector{}
+	connected := make(chan struct{}, 2)
+	disconnected := make(chan struct{}, 2)
+	dropped := make(chan struct{}, 2)
+	fc := newFakeClock()
+
+	srv := wspulse.NewServer(
+		func(r *http.Request) (string, string, error) {
+			return "resume-room", "resume-conn", nil
+		},
+		wspulse.WithMetrics(rec),
+		wspulse.WithResumeWindow(3*time.Minute),
+		wspulse.WithClock(fc),
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			select {
+			case disconnected <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	ts := httptest.NewServer(srv)
+	defer func() {
+		srv.Close()
+		ts.Close()
+	}()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+
+	// Step 1: Initial connection.
+	c1, resp1, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	if resp1 != nil && resp1.Body != nil {
+		resp1.Body.Close()
+	}
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for connect")
+	}
+
+	if n := rec.countByName("ConnectionOpened"); n != 1 {
+		t.Fatalf("ConnectionOpened after initial connect: want 1, got %d", n)
+	}
+
+	// Step 2: Drop transport → session suspends.
+	_ = c1.Close()
+	select {
+	case <-dropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for transport drop")
+	}
+
+	// Step 3: Fire grace timer → session destroyed, onDisconnect fires.
+	fc.Fire(0)
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for disconnect after grace expiry")
+	}
+
+	// Step 4: Reconnect with ?resume=true → expect HTTP 410 Gone.
+	resumeURL := wsURL + "?resume=true"
+	c2, resp2, err := dialer.Dial(resumeURL, nil)
+	if c2 != nil {
+		c2.Close()
+	}
+
+	// The server should reject with HTTP 410 — the dial must fail.
+	if err == nil {
+		t.Fatal("expected Dial to fail with HTTP 410, but it succeeded")
+	}
+	if resp2 == nil {
+		t.Fatalf("expected HTTP response, got nil (err=%v)", err)
+	}
+	if resp2.Body != nil {
+		io.Copy(io.Discard, resp2.Body)
+		resp2.Body.Close()
+	}
+	if resp2.StatusCode != http.StatusGone {
+		t.Errorf("response status: want %d (Gone), got %d", http.StatusGone, resp2.StatusCode)
+	}
+
+	// Step 5: Verify ResumeAttempt(false) was emitted.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		events := rec.eventsByName("ResumeAttempt")
+		for _, e := range events {
+			if !e.success && e.roomID == "resume-room" && e.connectionID == "resume-conn" {
+				goto resumeFound
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ResumeAttempt(false) not emitted; events: %v", rec.snapshot())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+resumeFound:
+
+	// Step 6: Verify ConnectionOpened was NOT emitted for the rejected reconnect.
+	// Only the initial connection should have triggered ConnectionOpened.
+	if n := rec.countByName("ConnectionOpened"); n != 1 {
+		t.Errorf("ConnectionOpened: want 1 (initial only), got %d", n)
 	}
 }

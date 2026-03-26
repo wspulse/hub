@@ -18,6 +18,7 @@ type registerMessage struct {
 	connectionID string
 	roomID       string
 	transport    *websocket.Conn
+	resumeIntent bool // true when the client connected with ?resume=true
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
@@ -165,6 +166,25 @@ func (h *hub) handleRegister(message registerMessage) {
 			)
 			h.disconnectSession(existing, nil, DisconnectNormal)
 		}
+	}
+
+	// Race case: the HTTP pre-check saw the session, but by the time the
+	// hub processes the registerMessage the grace timer has fired and
+	// destroyed it. The client wanted to resume but the session is gone.
+	// Reject with WS close 4100 (CloseSessionExpired) — do not create a
+	// new session, consistent with the HTTP 410 rejection in ServeHTTP.
+	if message.resumeIntent && !exists {
+		h.config.logger.Info("wspulse: resume rejected — session expired (race)",
+			zap.String("conn_id", message.connectionID),
+			zap.String("room_id", message.roomID),
+		)
+		h.config.metrics.ResumeAttempt(message.roomID, message.connectionID, false)
+		_ = message.transport.WriteMessage(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(CloseSessionExpired, "session expired"),
+		)
+		_ = message.transport.Close()
+		return
 	}
 
 	// Create a new session.
