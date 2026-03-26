@@ -105,9 +105,18 @@ Evaluate against:
 | **Severity** | Is it a bug, a correctness issue, a design concern, or a style/preference nitpick? |
 | **Cost** | What is the effort to address? Does the change introduce risk or scope creep? |
 
-### 3. Decide and respond
+### 3. Present analysis for approval
 
-Every comment must receive exactly one response:
+Present all findings to the user before taking action. For each comment, show:
+- The comment content and location
+- Your assessment (validity, severity, cost)
+- Your proposed decision (Fixed / Tracked / Won't fix / Not applicable) with reasoning
+
+**Do not make any code changes or reply to comments until the user has reviewed and approved.** If there are disagreements, discuss until a consensus is reached.
+
+### 4. Execute approved decisions
+
+After approval, carry out each decision and respond on the PR:
 
 - **`Fixed in {hash}. {what changed and why}`** — adopt and fix immediately. Bug and correctness issues must use this path unless the fix requires a separate PR due to scope.
 - **`Tracked in TODOS.md — {reason for deferring}`** — adopt but defer. Add entry to repo root `TODOS.md` with context and PR comment link.
@@ -116,7 +125,7 @@ Every comment must receive exactly one response:
 
 Duplicate or related comments may reference each other: `Same reasoning as {reference} above — {brief}`.
 
-### 4. Zero unresponded comments before merge
+### 5. Zero unresponded comments before merge
 
 The PR must have zero unaddressed comments before merge. This is a hard gate.
 
