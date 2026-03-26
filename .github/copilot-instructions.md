@@ -132,9 +132,17 @@ The PR must have zero unaddressed comments before merge. This is a hard gate.
 1. Read `doc/local/ai-learning.md` **in full** to recall past mistakes. If the file is missing or empty, create it with the table header (see format below) before proceeding.
 2. Check `doc/local/plan/` for any in-progress plan and read it fully.
 
-### During feature work
+### During feature work — doc before code
 
-For any new feature or multi-file fix: save a plan to `doc/local/plan/<feature-name>.md` **before starting**. Keep it updated with completed steps throughout the session.
+Before writing any production code, create or update `doc/local/plan/<feature-name>.md` with:
+
+1. **What** — what are you changing or adding?
+2. **Why** — what problem does it solve? What motivated this change?
+3. **How** — what is the intended approach?
+
+Keep it updated as the approach evolves. This is the primary cross-session context for understanding what was done and why.
+
+For bug fixes, the failing test serves as the "what"; add a brief "why" and "how" to the plan file or `doc/local/ai-learning.md`.
 
 ### Review records
 
