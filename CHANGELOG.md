@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0] - 2026-03-27
+
+### Changed
+
+- **BREAKING**: `MetricsCollector.ResumeAttempt` signature changed from
+  `ResumeAttempt(roomID, connectionID string, success bool)` to
+  `ResumeAttempt(roomID, connectionID string)`. The `success` parameter was
+  always `true` — resume success rate is derivable from existing metrics
+  (`ResumeAttempt` count vs `ConnectionClosed` with grace-expired reason).
+
+---
+
 ## [0.5.0] - 2026-03-25
 
 ### Added
