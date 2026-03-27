@@ -296,10 +296,6 @@ func TestIntegration_MetricsCollector_ResumeAttempt(t *testing.T) {
 		t.Errorf("ConnectionOpened after resume: want 1, got %d", n)
 	}
 
-	events := rec.eventsByName("ResumeAttempt")
-	if len(events) > 0 && !events[0].success {
-		t.Errorf("ResumeAttempt success = false, want true")
-	}
 }
 
 func TestIntegration_MetricsCollector_FrameDropped_SendFull(t *testing.T) {

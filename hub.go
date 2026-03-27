@@ -142,7 +142,7 @@ func (h *hub) handleRegister(message registerMessage) {
 				onResume = func() { fn(existing) }
 			}
 			existing.attachWS(message.transport, h, onResume)
-			h.config.metrics.ResumeAttempt(existing.roomID, existing.id, true)
+			h.config.metrics.ResumeAttempt(existing.roomID, existing.id)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)

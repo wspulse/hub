@@ -67,12 +67,10 @@ type MetricsCollector interface {
 	ConnectionClosed(roomID, connectionID string, duration time.Duration, reason DisconnectReason)
 
 	// ResumeAttempt is called when a suspended session is successfully resumed
-	// by a reconnecting client. In the current implementation, success is
-	// always true: a failed resume (reconnect after grace expiry) results in
-	// a new session via ConnectionOpened rather than an identifiable
-	// failed-resume event. The success parameter is reserved for future use
-	// when failed resume detection is implemented.
-	ResumeAttempt(roomID, connectionID string, success bool)
+	// by a reconnecting client. Only fires on successful resume — a reconnect
+	// after grace expiry creates a new session (ConnectionOpened) and is not
+	// tracked as a failed resume.
+	ResumeAttempt(roomID, connectionID string)
 
 	// RoomCreated is called when the first connection joins a room,
 	// causing the room to be allocated.
@@ -137,7 +135,7 @@ func (NoopCollector) ConnectionOpened(_, _ string) {}
 func (NoopCollector) ConnectionClosed(_, _ string, _ time.Duration, _ DisconnectReason) {}
 
 // ResumeAttempt is a no-op. See MetricsCollector.ResumeAttempt.
-func (NoopCollector) ResumeAttempt(_, _ string, _ bool) {}
+func (NoopCollector) ResumeAttempt(_, _ string) {}
 
 // RoomCreated is a no-op. See MetricsCollector.RoomCreated.
 func (NoopCollector) RoomCreated(_ string) {}
