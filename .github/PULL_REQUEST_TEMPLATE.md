@@ -8,10 +8,17 @@
 
 ## Checklist
 
+### Required
+
 - [ ] `make check` passes (`fmt` → `lint` → `test`)
 - [ ] Each commit represents exactly one logical change
 - [ ] Commit messages follow the format in `commit-message-instructions.md`
 - [ ] No unrelated code reformatting in this PR
+
+### Conditional (list only those that apply)
+
+<!-- Remove items that do not apply to this PR. All remaining items must be checked before merge. -->
+
 - [ ] Bug fix: includes a test that fails before the fix and passes after
 - [ ] New public API: includes GoDoc comments
 - [ ] Breaking change: major version bump discussed in linked issue
