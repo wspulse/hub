@@ -47,6 +47,7 @@ make tidy             # tidy module dependencies
     - `fix/<name>` — quick fix (e.g. config, docs, CI)
     - `chore/<name>` — maintenance, CI/CD, dependencies, docs
     - CI triggers on all branch prefixes above and on PRs targeting `main`/`develop`. Tags do **not** trigger CI (the tag is created after CI already passed). Open a PR into `develop`; `develop` requires status checks to pass.
+  - **Pull request description**: must follow the repo's `.github/PULL_REQUEST_TEMPLATE.md`. Fill in every section (Summary, Changes, Checklist). Do not invent custom formats.
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
   - **Unit vs integration**: integration tests (requiring a WebSocket connection) use `//go:build integration` and live in `*_integration_test.go` files. `make check` runs unit tests only by default; set `INCLUDE_INTEGRATION=1` to include integration tests.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
