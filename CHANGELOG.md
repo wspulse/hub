@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `WithMaxConnections(n int)` option — server-wide connection cap. Default 0 (no limit). Exceeding the limit rejects new connections with HTTP 503.
+
+---
+
 ## [0.6.0] - 2026-03-27
 
 ### Changed

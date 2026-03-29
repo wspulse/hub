@@ -53,6 +53,7 @@ type serverConfig struct {
 	upgraderReadBufferSize  int
 	upgraderWriteBufferSize int
 	metrics                 MetricsCollector
+	maxConnections          int
 }
 
 func defaultConfig(connect ConnectFunc) *serverConfig {
@@ -261,4 +262,15 @@ func WithMetrics(collector MetricsCollector) ServerOption {
 		panic("wspulse: WithMetrics: collector must not be nil")
 	}
 	return func(c *serverConfig) { c.metrics = collector }
+}
+
+// WithMaxConnections sets a server-wide connection cap. When the number of
+// active connections reaches n, new connections are rejected with HTTP 503
+// before the WebSocket upgrade. Default is 0 (no limit).
+// Panics if n is negative.
+func WithMaxConnections(n int) ServerOption {
+	if n < 0 {
+		panic("wspulse: WithMaxConnections: n must not be negative")
+	}
+	return func(c *serverConfig) { c.maxConnections = n }
 }

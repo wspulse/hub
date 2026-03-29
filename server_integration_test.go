@@ -3732,3 +3732,134 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 		// OK — callback did not fire for the closed session.
 	}
 }
+
+// ── WithMaxConnections integration tests ─────────────────────────────────────
+
+// uniqueIDConnect returns a ConnectFunc that assigns a unique connectionID to
+// each connection using an atomic counter. All connections join the same room.
+func uniqueIDConnect() wspulse.ConnectFunc {
+	var counter atomic.Int64
+	return func(r *http.Request) (string, string, error) {
+		id := fmt.Sprintf("conn-%d", counter.Add(1))
+		return "test-room", id, nil
+	}
+}
+
+func TestWithMaxConnections_Zero_NoLimit(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewServer(uniqueIDConnect(),
+		wspulse.WithMaxConnections(0),
+	)
+	t.Cleanup(srv.Close)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+
+	// Connect 5 clients — all should succeed with no limit.
+	for i := 0; i < 5; i++ {
+		c, _, err := dialer.Dial(u, nil)
+		if err != nil {
+			t.Fatalf("Dial %d failed: %v", i, err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+	}
+}
+
+func TestWithMaxConnections_RejectsOverLimit(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 2)
+	srv := wspulse.NewServer(uniqueIDConnect(),
+		wspulse.WithMaxConnections(1),
+		wspulse.WithOnConnect(func(wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+
+	// First connection should succeed.
+	c1, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("first Dial failed: %v", err)
+	}
+	t.Cleanup(func() { _ = c1.Close() })
+
+	// Wait for hub to register the connection.
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for first connection to register")
+	}
+
+	// Second connection should be rejected with HTTP 503.
+	_, resp, err := dialer.Dial(u, nil)
+	if err == nil {
+		t.Fatal("expected second Dial to fail, but it succeeded")
+	}
+	if resp != nil && resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", resp.StatusCode)
+	}
+}
+
+func TestWithMaxConnections_AllowsAfterDisconnect(t *testing.T) {
+	t.Parallel()
+	connected := make(chan wspulse.Connection, 2)
+	disconnected := make(chan struct{}, 2)
+	srv := wspulse.NewServer(uniqueIDConnect(),
+		wspulse.WithMaxConnections(1),
+		wspulse.WithOnConnect(func(c wspulse.Connection) {
+			connected <- c
+		}),
+		wspulse.WithOnDisconnect(func(wspulse.Connection, error) {
+			disconnected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
+
+	// Connect at limit.
+	c1, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("first Dial failed: %v", err)
+	}
+
+	// Wait for hub to register.
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for first connection to register")
+	}
+
+	// Disconnect to free the slot.
+	_ = c1.Close()
+
+	// Wait for hub to process the disconnect.
+	select {
+	case <-disconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for disconnect")
+	}
+
+	// New connection should now succeed.
+	c2, _, err := dialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("second Dial failed after disconnect: %v", err)
+	}
+	t.Cleanup(func() { _ = c2.Close() })
+
+	select {
+	case <-connected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for second connection to register")
+	}
+}

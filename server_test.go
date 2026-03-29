@@ -391,6 +391,30 @@ func TestServer_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
 	}
 }
 
+// ── WithMaxConnections option tests ────────────────────────────────────────────
+
+func TestWithMaxConnections_NegativePanics(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for negative max connections")
+		}
+	}()
+	_ = wspulse.WithMaxConnections(-1)
+}
+
+func TestWithMaxConnections_ZeroAccepted(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewServer(acceptAll, wspulse.WithMaxConnections(0))
+	t.Cleanup(srv.Close)
+}
+
+func TestWithMaxConnections_PositiveAccepted(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewServer(acceptAll, wspulse.WithMaxConnections(10))
+	t.Cleanup(srv.Close)
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

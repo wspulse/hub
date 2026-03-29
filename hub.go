@@ -69,10 +69,11 @@ type hub struct {
 	kick          chan kickRequest
 	done          chan struct{} // closed by Server.Close()
 
-	mu      sync.RWMutex
-	stopped atomic.Bool // set by shutdown(); ServeHTTP checks this early
-	scratch []*session  // reusable slice for broadcast snapshot; avoids per-broadcast allocation
-	config  *serverConfig
+	mu                sync.RWMutex
+	stopped           atomic.Bool  // set by shutdown(); ServeHTTP checks this early
+	activeConnections atomic.Int64 // logical session count; written by hub goroutine, read by ServeHTTP
+	scratch           []*session   // reusable slice for broadcast snapshot; avoids per-broadcast allocation
+	config            *serverConfig
 }
 
 func newHub(config *serverConfig) *hub {
@@ -194,6 +195,7 @@ func (h *hub) handleRegister(message registerMessage) {
 		h.config.metrics.RoomCreated(message.roomID)
 	}
 
+	h.activeConnections.Add(1)
 	newSession.attachWS(message.transport, h, nil)
 	h.config.metrics.ConnectionOpened(message.roomID, message.connectionID)
 
@@ -437,6 +439,7 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 // (closeOnce makes it idempotent).
 func (h *hub) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
+	h.activeConnections.Add(-1)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
 	_ = target.Close()
 	if fn := h.config.onDisconnect; fn != nil {

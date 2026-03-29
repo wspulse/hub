@@ -105,6 +105,15 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject if server-wide connection cap is reached.
+	if max := s.config.maxConnections; max > 0 && s.hub.activeConnections.Load() >= int64(max) {
+		s.config.logger.Warn("wspulse: ServeHTTP rejected — max connections reached",
+			zap.Int("max_connections", max),
+		)
+		http.Error(w, "too many connections", http.StatusServiceUnavailable)
+		return
+	}
+
 	roomID, connectionID, err := s.config.connect(r)
 	if err != nil {
 		s.config.logger.Debug("wspulse: connect rejected",
