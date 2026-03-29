@@ -68,7 +68,7 @@ All new features and design changes follow this process — do not skip steps:
 2. **Quick discussion** — feasibility + value check
 3. **Go / No-go** — kill or proceed
 4. **Layer check** — transport layer (wspulse implements) or application layer (write docs recipe instead)
-5. **Issue RFC** — open GitHub issue on `wspulse/.github` with summary, scope, impact assessment, priority label + milestone
+5. **Issue** — open GitHub issue on [`wspulse/.github`](https://github.com/wspulse/.github) (the central tracker for all cross-repo work). Include summary, scope, impact assessment, priority label + milestone
 6. **Design discussion** — API surface, cross-SDK parity, contract/protocol updates, edge cases
 7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template
 
