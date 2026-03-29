@@ -68,9 +68,9 @@ All new features and design changes follow this process — do not skip steps:
 2. **Quick discussion** — feasibility + value check
 3. **Go / No-go** — kill or proceed
 4. **Layer check** — transport layer (wspulse implements) or application layer (write docs recipe instead)
-5. **Issue** — open GitHub issue on [`wspulse/.github`](https://github.com/wspulse/.github) (the central tracker for all cross-repo work). Include summary, scope, impact assessment, priority label + milestone
+5. **Issue** — repo-scoped work: open issue on this repo. Cross-repo/global work: open issue on [`wspulse/.github`](https://github.com/wspulse/.github). Include summary, scope, impact assessment, priority label + milestone
 6. **Design discussion** — API surface, cross-SDK parity, contract/protocol updates, edge cases
-7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template
+7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template. **Repo-scoped**: link PR to the issue. **Global**: each PR mentions the global issue (e.g., `wspulse/.github#N`); after opening a PR, comment on the global issue with the PR link
 
 ## Critical Rules
 
