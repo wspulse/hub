@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `NewTestServer(t, connect, opts...) wsURL` — test helper for spinning up an in-process server with auto-cleanup
+
+---
+
 ## [0.6.0] - 2026-03-27
 
 ### Changed
