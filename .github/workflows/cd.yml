@@ -6,12 +6,8 @@ on:
       - 'v*.*.*'
 
 jobs:
-  check:
-    uses: wspulse/.github/.github/workflows/go-check.yml@main
-
   release:
     runs-on: ubuntu-latest
-    needs: [check]
     permissions:
       contents: write
     steps:
