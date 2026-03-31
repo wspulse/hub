@@ -68,9 +68,9 @@ All new features and design changes follow this process — do not skip steps:
 2. **Quick discussion** — feasibility + value check
 3. **Go / No-go** — kill or proceed
 4. **Layer check** — transport layer (wspulse implements) or application layer (write docs recipe instead)
-5. **Issue RFC** — open GitHub issue on `wspulse/.github` with summary, scope, impact assessment, priority label + milestone
+5. **Issue** — repo-scoped work: open issue on this repo. Cross-repo/global work: open issue on [`wspulse/.github`](https://github.com/wspulse/.github). Include summary, scope, impact assessment, priority label + milestone
 6. **Design discussion** — API surface, cross-SDK parity, contract/protocol updates, edge cases
-7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template
+7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template. **Repo-scoped**: link PR to the issue. **Global**: each PR mentions the global issue (e.g., `wspulse/.github#N`); after opening a PR, comment on the global issue with the PR link
 
 ## Critical Rules
 
@@ -89,10 +89,9 @@ All new features and design changes follow this process — do not skip steps:
     6. If you are about to edit production code and no failing test exists yet — stop and go back to step 1.
 8. **STOP — before every commit, verify this checklist:**
     1. Run `make check` (fmt → lint → test) and confirm it passes. Skip if the commit contains only non-code changes (e.g. documentation, comments, Markdown).
-    2. Run GitHub Copilot code review (`github.copilot.chat.review.changes`) on the working-tree diff and resolve every comment before proceeding.
-    3. Commit message follows [commit-message-instructions.md](instructions/commit-message-instructions.md): correct type, subject ≤ 50 chars, numbered body items stating reason → change.
-    4. This commit contains exactly one logical change — no unrelated modifications.
-    5. If any item fails — fix it before committing.
+    2. Commit message follows [commit-message-instructions.md](instructions/commit-message-instructions.md): correct type, subject ≤ 50 chars, numbered body items stating reason → change.
+    3. This commit contains exactly one logical change — no unrelated modifications.
+    4. If any item fails — fix it before committing.
 9. **Accuracy** — if you have questions or need clarification, ask the user. Do not make assumptions without confirming.
 10. **Language consistency** — when the user writes in Traditional Chinese, respond in Traditional Chinese; otherwise respond in English.
 11. **Panic policy — fail early, never at steady-state runtime** — Enforce errors at the earliest possible phase:
