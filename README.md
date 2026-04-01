@@ -196,7 +196,6 @@ The router from [wspulse/core](https://github.com/wspulse/core) integrates direc
 
 ```json
 {
-  "id": "msg-001",
   "event": "chat.message",
   "payload": { "text": "hello" }
 }
