@@ -2,6 +2,9 @@ package wspulse
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRingBuffer_PushAndDrain(t *testing.T) {
@@ -13,15 +16,10 @@ func TestRingBuffer_PushAndDrain(t *testing.T) {
 	rb.Push([]byte("c"))
 
 	got := rb.Drain()
-	if len(got) != 3 {
-		t.Fatalf("Drain: want 3 items, got %d", len(got))
-	}
-	want := []string{"a", "b", "c"}
-	for i, w := range want {
-		if string(got[i]) != w {
-			t.Errorf("Drain[%d]: want %q, got %q", i, w, string(got[i]))
-		}
-	}
+	require.Len(t, got, 3)
+	assert.Equal(t, "a", string(got[0]))
+	assert.Equal(t, "b", string(got[1]))
+	assert.Equal(t, "c", string(got[2]))
 }
 
 func TestRingBuffer_DrainClearsBuffer(t *testing.T) {
@@ -31,9 +29,7 @@ func TestRingBuffer_DrainClearsBuffer(t *testing.T) {
 	rb.Drain()
 
 	got := rb.Drain()
-	if len(got) != 0 {
-		t.Fatalf("second Drain: want 0 items, got %d", len(got))
-	}
+	require.Empty(t, got)
 }
 
 func TestRingBuffer_Wraparound(t *testing.T) {
@@ -46,28 +42,19 @@ func TestRingBuffer_Wraparound(t *testing.T) {
 	rb.Push([]byte("4")) // overwrites "1"
 
 	got := rb.Drain()
-	if len(got) != 3 {
-		t.Fatalf("Drain after wraparound: want 3 items, got %d", len(got))
-	}
-	want := []string{"2", "3", "4"}
-	for i, w := range want {
-		if string(got[i]) != w {
-			t.Errorf("Drain[%d]: want %q, got %q", i, w, string(got[i]))
-		}
-	}
+	require.Len(t, got, 3)
+	assert.Equal(t, "2", string(got[0]))
+	assert.Equal(t, "3", string(got[1]))
+	assert.Equal(t, "4", string(got[2]))
 }
 
 func TestRingBuffer_Len(t *testing.T) {
 	t.Parallel()
 	rb := newRingBuffer(4)
-	if rb.Len() != 0 {
-		t.Fatalf("empty buffer Len: want 0, got %d", rb.Len())
-	}
+	require.Equal(t, 0, rb.Len())
 	rb.Push([]byte("a"))
 	rb.Push([]byte("b"))
-	if rb.Len() != 2 {
-		t.Fatalf("Len after 2 pushes: want 2, got %d", rb.Len())
-	}
+	require.Equal(t, 2, rb.Len())
 }
 
 func TestRingBuffer_SingleCapacity(t *testing.T) {
@@ -77,12 +64,8 @@ func TestRingBuffer_SingleCapacity(t *testing.T) {
 	rb.Push([]byte("second"))
 
 	got := rb.Drain()
-	if len(got) != 1 {
-		t.Fatalf("want 1 item, got %d", len(got))
-	}
-	if string(got[0]) != "second" {
-		t.Errorf("want %q, got %q", "second", string(got[0]))
-	}
+	require.Len(t, got, 1)
+	assert.Equal(t, "second", string(got[0]))
 }
 
 func TestRingBuffer_ExactCapacity(t *testing.T) {
@@ -93,15 +76,10 @@ func TestRingBuffer_ExactCapacity(t *testing.T) {
 	rb.Push([]byte("c"))
 
 	got := rb.Drain()
-	if len(got) != 3 {
-		t.Fatalf("want 3 items, got %d", len(got))
-	}
-	want := []string{"a", "b", "c"}
-	for i, w := range want {
-		if string(got[i]) != w {
-			t.Errorf("Drain[%d]: want %q, got %q", i, w, string(got[i]))
-		}
-	}
+	require.Len(t, got, 3)
+	assert.Equal(t, "a", string(got[0]))
+	assert.Equal(t, "b", string(got[1]))
+	assert.Equal(t, "c", string(got[2]))
 }
 
 func TestRingBuffer_LenAfterWraparound(t *testing.T) {
@@ -111,7 +89,5 @@ func TestRingBuffer_LenAfterWraparound(t *testing.T) {
 	rb.Push([]byte("2"))
 	rb.Push([]byte("3")) // wraps
 
-	if rb.Len() != 2 {
-		t.Fatalf("Len after wraparound: want 2, got %d", rb.Len())
-	}
+	require.Equal(t, 2, rb.Len())
 }
