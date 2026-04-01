@@ -396,6 +396,7 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
+	t.Cleanup(func() { _ = c.Close() })
 
 	select {
 	case <-connected:
