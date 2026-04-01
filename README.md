@@ -121,7 +121,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | ------------- | ----------------------------------------------------------------------- |
 | `Server`      | Manages sessions, heartbeats, and room routing                          |
 | `Connection`  | A logical WebSocket session (`ID`, `RoomID`, `Send`, `Close`, `Done`)   |
-| `Frame`       | Transport unit (`ID`, `Event`, `Payload []byte`) — re-exported from core |
+| `Frame`       | Transport unit (`Event`, `Payload []byte`) — re-exported from core       |
 | `ConnectFunc` | `func(*http.Request) (roomID, connectionID string, err error)`          |
 | `Codec`       | Interface: `Encode(Frame)`, `Decode([]byte)`, `FrameType()` — from core |
 | `JSONCodec`   | Default codec — text frames, JSON payload — re-exported from core       |
