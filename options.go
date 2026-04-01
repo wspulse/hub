@@ -265,9 +265,10 @@ func WithMetrics(collector MetricsCollector) ServerOption {
 }
 
 // WithMaxConnections sets a server-wide connection cap. When the number of
-// active connections reaches n, new connections are rejected with HTTP 503
-// before the WebSocket upgrade. Default is 0 (no limit).
-// Panics if n is negative.
+// tracked sessions reaches n, new connections are rejected with HTTP 503
+// before the WebSocket upgrade. If session resumption is enabled, suspended
+// sessions within the resume window still count toward this cap until they are
+// destroyed. Default is 0 (no limit). Panics if n is negative.
 func WithMaxConnections(n int) ServerOption {
 	if n < 0 {
 		panic("wspulse: WithMaxConnections: n must not be negative")

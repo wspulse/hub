@@ -4055,7 +4055,10 @@ func TestWithMaxConnections_RejectsOverLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected second Dial to fail, but it succeeded")
 	}
-	if resp != nil && resp.StatusCode != http.StatusServiceUnavailable {
+	if resp == nil {
+		t.Fatalf("expected HTTP %d response, got nil (err=%v)", http.StatusServiceUnavailable, err)
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("want 503, got %d", resp.StatusCode)
 	}
 }
@@ -4085,6 +4088,7 @@ func TestWithMaxConnections_AllowsAfterDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Dial failed: %v", err)
 	}
+	t.Cleanup(func() { _ = c1.Close() })
 
 	// Wait for hub to register.
 	select {
