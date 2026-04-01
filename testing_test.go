@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/websocket"
+
 	wspulse "github.com/wspulse/server"
 )
 
@@ -13,6 +15,12 @@ func TestNewTestServer_ReturnsWSURL(t *testing.T) {
 		return "room", "", nil
 	})
 	if !strings.HasPrefix(url, "ws://") {
-		t.Errorf("expected ws:// prefix, got %q", url)
+		t.Fatalf("expected ws:// prefix, got %q", url)
 	}
+
+	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatalf("failed to dial %q: %v", url, err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
 }

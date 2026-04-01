@@ -4,7 +4,7 @@
 
 ### Added
 
-- `NewTestServer(t, connect, opts...) wsURL` — test helper for spinning up an in-process server with auto-cleanup
+- `NewTestServer(t, connect, opts...) string` — test helper for spinning up an in-process server with auto-cleanup; returns the `ws://...` URL string
 
 ---
 
@@ -110,7 +110,11 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/server/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/wspulse/server/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/wspulse/server/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/wspulse/server/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/wspulse/server/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/wspulse/server/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/wspulse/server/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/wspulse/server/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wspulse/server/releases/tag/v0.1.0
