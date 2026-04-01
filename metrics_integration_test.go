@@ -359,6 +359,7 @@ func TestIntegration_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
 func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
+	transportDropped := make(chan struct{}, 1)
 
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
@@ -366,9 +367,16 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 		},
 		wspulse.WithMetrics(rec),
 		wspulse.WithSendBufferSize(1),
+		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case transportDropped <- struct{}{}:
 			default:
 			}
 		}),
@@ -388,7 +396,7 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
-	defer c.Close()
+	t.Cleanup(func() { _ = c.Close() })
 
 	select {
 	case <-connected:
@@ -396,15 +404,24 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 		t.Fatal("timed out waiting for connect")
 	}
 
+	// Close the WebSocket to suspend the session. With ResumeWindow,
+	// writePump stops but the session stays alive. Frames go to the
+	// ring buffer (size 1) with no drain — deterministic overflow.
+	c.Close()
+
+	select {
+	case <-transportDropped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for transport drop")
+	}
+
 	frame := wspulse.Frame{Event: "fill", Payload: []byte(`{}`)}
-	// Fill buffer via broadcast (drop-oldest path).
+	// Ring buffer size 1: first broadcast fills it, second triggers
+	// drop-oldest. No race with writePump — it's stopped.
 	_ = srv.Broadcast("drop-room", frame)
-	// Second broadcast triggers drop-oldest on the full buffer.
-	_ = srv.Broadcast("drop-room", frame)
-	// Third broadcast to ensure at least one drop-oldest fires.
 	_ = srv.Broadcast("drop-room", frame)
 
-	// Poll until FrameDropped is observed instead of sleeping.
+	// Poll until FrameDropped is observed.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		if n := rec.countByName("FrameDropped"); n >= 1 {
