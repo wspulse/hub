@@ -73,7 +73,7 @@ func (m *mockTransport) SetReadLimit(limit int64) {
 	m.mu.Unlock()
 }
 
-func (m *mockTransport) SetReadDeadline(_ time.Time) error { return nil }
+func (m *mockTransport) SetReadDeadline(_ time.Time) error  { return nil }
 func (m *mockTransport) SetWriteDeadline(_ time.Time) error { return nil }
 
 func (m *mockTransport) SetPongHandler(h func(string) error) {

@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	wspulse "github.com/wspulse/core"
 	"go.uber.org/zap"
+
+	wspulse "github.com/wspulse/core"
 )
 
 // Connection represents a logical WebSocket session managed by the Server.
@@ -67,14 +68,14 @@ type session struct {
 	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex      // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	mu           sync.Mutex        // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
 	transport    wspulse.Transport // current physical connection; nil when suspended
-	pumpQuit     chan struct{}   // closed to stop the current writePump
-	pumpDone     chan struct{}   // closed by writePump on exit
-	graceTimer   *time.Timer     // resume window timer; nil when not suspended
-	state        sessionState    // current lifecycle state
-	resumeBuffer *ringBuffer     // nil when resume is disabled
-	suspendEpoch uint64          // monotonically increases on each detachWS; stale grace timers compare this
+	pumpQuit     chan struct{}     // closed to stop the current writePump
+	pumpDone     chan struct{}     // closed by writePump on exit
+	graceTimer   *time.Timer       // resume window timer; nil when not suspended
+	state        sessionState      // current lifecycle state
+	resumeBuffer *ringBuffer       // nil when resume is disabled
+	suspendEpoch uint64            // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 

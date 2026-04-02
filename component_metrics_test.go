@@ -135,10 +135,7 @@ func TestComponent_MetricsCollector_MessageFlow(t *testing.T) {
 
 	// Wait for MessageSent to fire for both connections.
 	deadline := time.Now().Add(time.Second)
-	for {
-		if rec.countByName("MessageSent") >= 2 {
-			break
-		}
+	for rec.countByName("MessageSent") < 2 {
 		if time.Now().After(deadline) {
 			require.Failf(t, "timed out", "MessageSent=%d (want >= 2)", rec.countByName("MessageSent"))
 		}
@@ -268,10 +265,7 @@ func TestComponent_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.
 
 	// Poll for FrameDropped.
 	deadline := time.Now().Add(time.Second)
-	for {
-		if rec.countByName("FrameDropped") >= 1 {
-			break
-		}
+	for rec.countByName("FrameDropped") < 1 {
 		if time.Now().After(deadline) {
 			require.Failf(t, "timed out", "FrameDropped=%d", rec.countByName("FrameDropped"))
 		}

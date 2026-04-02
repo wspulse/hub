@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	wspulse "github.com/wspulse/core"
 	"go.uber.org/zap"
+
+	wspulse "github.com/wspulse/core"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ type registerMessage struct {
 type transportDiedMessage struct {
 	session   *session
 	transport wspulse.Transport // the specific transport that died
-	err       error           // nil for normal closure
+	err       error             // nil for normal closure
 }
 
 // graceExpiredMessage is sent by a time.AfterFunc when the resume window elapses
