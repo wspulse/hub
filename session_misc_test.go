@@ -607,15 +607,20 @@ func TestConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 
 func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 	t.Parallel()
+	const count = 20
+	connected := make(chan struct{}, count)
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
 		},
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
 	)
 
 	// Inject multiple transports concurrently.
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := 0; i < count; i++ {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -626,7 +631,14 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 		}(i)
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	// Wait for all connections to register before closing.
+	for i := 0; i < count; i++ {
+		select {
+		case <-connected:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for connect")
+		}
+	}
 	srv.Close()
 	wg.Wait()
 }

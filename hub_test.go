@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -218,13 +219,13 @@ func TestGetConnections_ReturnsRegisteredConnection(t *testing.T) {
 
 func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	t.Parallel()
-	connectCount := 0
+	var connectCount atomic.Int32
 	connected := make(chan struct{}, 2)
 	kicked := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
-			connectCount++
+			connectCount.Add(1)
 			connected <- struct{}{}
 		}),
 		wspulse.WithOnDisconnect(func(_ wspulse.Connection, err error) {
@@ -312,11 +313,11 @@ func TestMultipleRooms_BroadcastIsolation(t *testing.T) {
 	connectedA := make(chan struct{}, 1)
 	connectedB := make(chan struct{}, 1)
 
-	connectCount := 0
+	var connectCount atomic.Int32
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
-			connectCount++
-			if connectCount == 1 {
+			n := connectCount.Add(1)
+			if n == 1 {
 				return "room-a", "conn-a", nil
 			}
 			return "room-b", "conn-b", nil

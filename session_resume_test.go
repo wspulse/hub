@@ -528,8 +528,8 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	dropFired := false
-	restoreFired := false
+	var dropFired atomic.Bool
+	var restoreFired atomic.Bool
 
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -547,10 +547,10 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 			}
 		}),
 		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
-			dropFired = true
+			dropFired.Store(true)
 		}),
 		wspulse.WithOnTransportRestore(func(_ wspulse.Connection) {
-			restoreFired = true
+			restoreFired.Store(true)
 		}),
 	)
 	t.Cleanup(srv.Close)
@@ -564,8 +564,8 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 
-	assert.False(t, dropFired, "OnTransportDrop should not fire without resume window")
-	assert.False(t, restoreFired, "OnTransportRestore should not fire without resume window")
+	assert.False(t, dropFired.Load(), "OnTransportDrop should not fire without resume window")
+	assert.False(t, restoreFired.Load(), "OnTransportRestore should not fire without resume window")
 }
 
 // ── Resume: concurrent reconnect (race detector) ────────────────────────────
@@ -907,8 +907,14 @@ func TestResume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	case <-time.After(time.Second):
 		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
-	// Let deferred cleanup finish.
-	time.Sleep(50 * time.Millisecond)
+	// Wait for hub to finish deferred cleanup (connection removal).
+	deadline := time.Now().Add(time.Second)
+	for len(srv.GetConnections("test-room")) > 0 {
+		if time.Now().After(deadline) {
+			require.Fail(t, "timed out waiting for hub to remove connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // ── Resume: duplicate ID while connected kicks old ──────────────────────────
@@ -1076,6 +1082,7 @@ func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 4)
+	dropped := make(chan struct{}, 1)
 
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1086,6 +1093,12 @@ func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 			default:
 			}
 		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
 	)
 	t.Cleanup(srv.Close)
 
@@ -1093,13 +1106,25 @@ func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 
 	// Close transport to enter suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	time.Sleep(50 * time.Millisecond) // let hub process transportDied
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for transport drop")
+	}
 
 	// Get the connection reference and call Close() on it.
 	connections := srv.GetConnections("test-room")
 	require.Len(t, connections, 1)
 	require.NoError(t, connections[0].Close())
-	time.Sleep(50 * time.Millisecond)
+
+	// Wait for hub to process the close (connection removed from maps).
+	deadline := time.Now().Add(time.Second)
+	for len(srv.GetConnections("test-room")) > 0 {
+		if time.Now().After(deadline) {
+			require.Fail(t, "timed out waiting for hub to remove connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	// Reconnect with the same connectionID — handleRegister sees stateClosed,
 	// cleans up stale entry, creates new session.
@@ -1120,6 +1145,7 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 4)
 	disconnected := make(chan struct{}, 4)
+	dropped := make(chan struct{}, 1)
 
 	srv := wspulse.NewServer(
 		acceptAll,
@@ -1136,6 +1162,12 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 			default:
 			}
 		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
 	)
 	t.Cleanup(srv.Close)
 
@@ -1143,7 +1175,11 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 
 	// Suspend the session by dropping the transport.
 	mt.InjectError(errors.New("transport closed"))
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for transport drop")
+	}
 
 	// Call Close() on the suspended session.
 	conns := srv.GetConnections("test-room")
@@ -1246,6 +1282,7 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
+	dropped := make(chan struct{}, 1)
 	var once sync.Once
 
 	srv := wspulse.NewServer(
@@ -1259,6 +1296,12 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 		}),
 		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
 			once.Do(func() { close(disconnected) })
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
 		}),
 	)
 	t.Cleanup(srv.Close)
@@ -1274,7 +1317,11 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 
 	// Drop the transport — session enters suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	time.Sleep(50 * time.Millisecond) // let hub process transportDied
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for transport drop")
+	}
 
 	// Confirm the session is still registered (suspended).
 	require.NotEmpty(t, srv.GetConnections("test-room"),
@@ -1291,9 +1338,13 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
-	time.Sleep(50 * time.Millisecond)
-	assert.Empty(t, srv.GetConnections("test-room"),
-		"want 0 connections after Close + grace expiry")
+	deadline := time.Now().Add(time.Second)
+	for len(srv.GetConnections("test-room")) > 0 {
+		if time.Now().After(deadline) {
+			require.Fail(t, "timed out waiting for hub to remove connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // ── Resume: Connection.Close fires OnDisconnect immediately ─────────────────
@@ -1302,6 +1353,7 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
+	dropped := make(chan struct{}, 1)
 	var once sync.Once
 
 	const gracePeriod = 5 * time.Second
@@ -1318,6 +1370,12 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
 			once.Do(func() { close(disconnected) })
 		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
 	)
 	t.Cleanup(srv.Close)
 
@@ -1332,7 +1390,11 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 
 	// Drop the transport — session enters suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	time.Sleep(50 * time.Millisecond) // let hub process transportDied
+	select {
+	case <-dropped:
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for transport drop")
+	}
 
 	// Application calls Close() on the suspended session.
 	start := time.Now()
@@ -1349,9 +1411,13 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
-	time.Sleep(50 * time.Millisecond)
-	assert.Empty(t, srv.GetConnections("test-room"),
-		"want 0 connections after Close")
+	deadline := time.Now().Add(time.Second)
+	for len(srv.GetConnections("test-room")) > 0 {
+		if time.Now().After(deadline) {
+			require.Fail(t, "timed out waiting for hub to remove connection")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // ── Resume: mass close while suspended, all OnDisconnect fire ───────────────
@@ -1366,14 +1432,12 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	var disconnectCount int64
 	allDisconnected := make(chan struct{})
 
-	connIdx := 0
+	var dropCount int64
+	allDropped := make(chan struct{})
+
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
-			mu.Lock()
-			connIdx++
-			id := fmt.Sprintf("conn-%d", connIdx)
-			mu.Unlock()
-			return "room", id, nil
+			return "room", "", nil
 		},
 		wspulse.WithResumeWindow(30*time.Second),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -1383,6 +1447,11 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 			mu.Unlock()
 			if n == count {
 				close(allConnected)
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			if atomic.AddInt64(&dropCount, 1) == int64(count) {
+				close(allDropped)
 			}
 		}),
 		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
@@ -1398,10 +1467,6 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	for i := 0; i < count; i++ {
 		mt := newMockTransport()
 		mts[i] = mt
-		mu.Lock()
-		id := fmt.Sprintf("conn-%d", connIdx+1)
-		mu.Unlock()
-		_ = id
 		wspulse.InjectTransport(srv, fmt.Sprintf("conn-%d", i+1), "room", mt)
 	}
 
@@ -1415,7 +1480,13 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	for _, mt := range mts {
 		mt.InjectError(errors.New("transport closed"))
 	}
-	time.Sleep(200 * time.Millisecond) // let hub process all transportDied messages
+	select {
+	case <-allDropped:
+	case <-time.After(5 * time.Second):
+		got := atomic.LoadInt64(&dropCount)
+		require.Failf(t, "timed out waiting for all transport drops",
+			"want %d, got %d", count, got)
+	}
 
 	// Close all suspended sessions concurrently.
 	mu.Lock()
