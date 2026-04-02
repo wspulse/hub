@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	core "github.com/wspulse/core"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -17,7 +18,7 @@ import (
 type registerMessage struct {
 	connectionID string
 	roomID       string
-	transport    *websocket.Conn
+	transport    core.Transport
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
@@ -25,8 +26,8 @@ type registerMessage struct {
 // destroy it (resume disabled / grace expired).
 type transportDiedMessage struct {
 	session   *session
-	transport *websocket.Conn // the specific transport that died
-	err       error           // nil for normal closure
+	transport core.Transport // the specific transport that died
+	err       error          // nil for normal closure
 }
 
 // graceExpiredMessage is sent by a time.AfterFunc when the resume window elapses
