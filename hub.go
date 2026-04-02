@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	wspulse "github.com/wspulse/core"
 	"go.uber.org/zap"
 )
 
@@ -17,7 +17,7 @@ import (
 type registerMessage struct {
 	connectionID string
 	roomID       string
-	transport    *websocket.Conn
+	transport    wspulse.Transport
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
@@ -25,7 +25,7 @@ type registerMessage struct {
 // destroy it (resume disabled / grace expired).
 type transportDiedMessage struct {
 	session   *session
-	transport *websocket.Conn // the specific transport that died
+	transport wspulse.Transport // the specific transport that died
 	err       error           // nil for normal closure
 }
 

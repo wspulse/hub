@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	wspulse "github.com/wspulse/core"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +68,7 @@ type session struct {
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
 	mu           sync.Mutex      // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    *websocket.Conn // current physical connection; nil when suspended
+	transport    wspulse.Transport // current physical connection; nil when suspended
 	pumpQuit     chan struct{}   // closed to stop the current writePump
 	pumpDone     chan struct{}   // closed by writePump on exit
 	graceTimer   *time.Timer     // resume window timer; nil when not suspended
@@ -250,7 +251,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the hub's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete func()) {
+func (s *session) attachWS(transport wspulse.Transport, h *hub, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump pair if still running.
@@ -411,7 +412,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the hub that this transport
 // has died. If the hub is shutting down, cleanup is handled inline.
-func (s *session) readPump(transport *websocket.Conn, h *hub) {
+func (s *session) readPump(transport wspulse.Transport, h *hub) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -490,7 +491,7 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 //
 // pumpQuit is closed when this pump should stop (reconnect or session close).
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(transport *websocket.Conn, pumpQuit, pumpDone chan struct{}) {
+func (s *session) writePump(transport wspulse.Transport, pumpQuit, pumpDone chan struct{}) {
 	ticker := s.config.clock.NewTicker(s.config.pingPeriod)
 	defer func() {
 		ticker.Stop()
