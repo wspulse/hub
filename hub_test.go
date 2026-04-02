@@ -32,7 +32,7 @@ func injectAndWait(t *testing.T, srv wspulse.Server, connectionID, roomID string
 
 // ── OnConnect ────────────────────────────────────────────────────────────────
 
-func TestComponent_OnConnect_SendsFrame(t *testing.T) {
+func TestOnConnect_SendsFrame(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -56,7 +56,7 @@ func TestComponent_OnConnect_SendsFrame(t *testing.T) {
 
 // ── OnMessage ────────────────────────────────────────────────────────────────
 
-func TestComponent_OnMessage_CallbackFires(t *testing.T) {
+func TestOnMessage_CallbackFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	received := make(chan wspulse.Frame, 1)
@@ -88,7 +88,7 @@ func TestComponent_OnMessage_CallbackFires(t *testing.T) {
 
 // ── Broadcast ────────────────────────────────────────────────────────────────
 
-func TestComponent_Broadcast_ReachesConnectedClient(t *testing.T) {
+func TestBroadcast_ReachesConnectedClient(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -113,7 +113,7 @@ func TestComponent_Broadcast_ReachesConnectedClient(t *testing.T) {
 
 // ── Send ─────────────────────────────────────────────────────────────────────
 
-func TestComponent_Send_DeliversFrameToConnection(t *testing.T) {
+func TestSend_DeliversFrameToConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -138,7 +138,7 @@ func TestComponent_Send_DeliversFrameToConnection(t *testing.T) {
 
 // ── OnDisconnect ─────────────────────────────────────────────────────────────
 
-func TestComponent_OnDisconnect_CallbackFires(t *testing.T) {
+func TestOnDisconnect_CallbackFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -167,7 +167,7 @@ func TestComponent_OnDisconnect_CallbackFires(t *testing.T) {
 
 // ── Kick ─────────────────────────────────────────────────────────────────────
 
-func TestComponent_Kick_ClosesConnection(t *testing.T) {
+func TestKick_ClosesConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -195,7 +195,7 @@ func TestComponent_Kick_ClosesConnection(t *testing.T) {
 
 // ── GetConnections ───────────────────────────────────────────────────────────
 
-func TestComponent_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
+func TestGetConnections_ReturnsRegisteredConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -216,7 +216,7 @@ func TestComponent_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
 
 // ── Duplicate Connection ID ──────────────────────────────────────────────────
 
-func TestComponent_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
+func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	t.Parallel()
 	connectCount := 0
 	connected := make(chan struct{}, 2)
@@ -265,7 +265,7 @@ func TestComponent_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 
 // ── Connection.Done ──────────────────────────────────────────────────────────
 
-func TestComponent_ConnectionDone_ClosedOnKick(t *testing.T) {
+func TestConnectionDone_ClosedOnKick(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
@@ -297,7 +297,7 @@ func TestComponent_ConnectionDone_ClosedOnKick(t *testing.T) {
 
 // ── Broadcast to empty room ─────────────────────────────────────────────────
 
-func TestComponent_Broadcast_EmptyRoom_NoError(t *testing.T) {
+func TestBroadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(acceptAll)
 	t.Cleanup(srv.Close)
@@ -307,7 +307,7 @@ func TestComponent_Broadcast_EmptyRoom_NoError(t *testing.T) {
 
 // ── Multiple rooms ───────────────────────────────────────────────────────────
 
-func TestComponent_MultipleRooms_BroadcastIsolation(t *testing.T) {
+func TestMultipleRooms_BroadcastIsolation(t *testing.T) {
 	t.Parallel()
 	connectedA := make(chan struct{}, 1)
 	connectedB := make(chan struct{}, 1)
@@ -365,7 +365,7 @@ func TestComponent_MultipleRooms_BroadcastIsolation(t *testing.T) {
 
 // ── Shutdown fires OnDisconnect ─────────────────────────────────────────────
 
-func TestComponent_ShutdownFiresOnDisconnect(t *testing.T) {
+func TestShutdownFiresOnDisconnect(t *testing.T) {
 	t.Parallel()
 	const count = 3
 	connected := make(chan struct{}, count)
@@ -409,7 +409,7 @@ func TestComponent_ShutdownFiresOnDisconnect(t *testing.T) {
 
 // ── Backpressure: send buffer full ──────────────────────────────────────────
 
-func TestComponent_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
+func TestConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(

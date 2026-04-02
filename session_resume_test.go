@@ -47,7 +47,7 @@ func reconnect(t *testing.T, srv wspulse.Server, connectionID, roomID string, re
 
 // ── Resume: reconnect within window ─────────────────────────────────────────
 
-func TestComponent_Resume_ReconnectWithinWindow(t *testing.T) {
+func TestResume_ReconnectWithinWindow(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	disconnected := make(chan struct{}, 1)
@@ -114,7 +114,7 @@ func TestComponent_Resume_ReconnectWithinWindow(t *testing.T) {
 
 // ── Resume: grace expires ───────────────────────────────────────────────────
 
-func TestComponent_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
+func TestResume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -163,7 +163,7 @@ func TestComponent_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 
 // ── Resume: buffered frames delivered ───────────────────────────────────────
 
-func TestComponent_Resume_BufferedFramesDelivered(t *testing.T) {
+func TestResume_BufferedFramesDelivered(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -222,7 +222,7 @@ func TestComponent_Resume_BufferedFramesDelivered(t *testing.T) {
 
 // ── Resume: kick bypasses window ────────────────────────────────────────────
 
-func TestComponent_Resume_KickBypassesWindow(t *testing.T) {
+func TestResume_KickBypassesWindow(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -266,7 +266,7 @@ func TestComponent_Resume_KickBypassesWindow(t *testing.T) {
 
 // ── Resume: no resume window → disconnects immediately ──────────────────────
 
-func TestComponent_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
+func TestResume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -301,7 +301,7 @@ func TestComponent_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 
 // ── Resume: server close terminates suspended ───────────────────────────────
 
-func TestComponent_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
+func TestResume_ServerCloseTerminatesSuspended(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan error, 1)
@@ -345,7 +345,7 @@ func TestComponent_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 
 // ── Resume: broadcast while suspended ───────────────────────────────────────
 
-func TestComponent_Resume_BroadcastWhileSuspended(t *testing.T) {
+func TestResume_BroadcastWhileSuspended(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -392,7 +392,7 @@ func TestComponent_Resume_BroadcastWhileSuspended(t *testing.T) {
 
 // ── Resume: Connection.Close while suspended ────────────────────────────────
 
-func TestComponent_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
+func TestResume_ConnectionCloseWhileSuspended(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
@@ -451,7 +451,7 @@ func TestComponent_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 
 // ── Resume: stale grace timer ignored ───────────────────────────────────────
 
-func TestComponent_Resume_StaleGraceTimerIgnored(t *testing.T) {
+func TestResume_StaleGraceTimerIgnored(t *testing.T) {
 	// TODO: implement full epoch-mismatch scenario across multiple suspend/resume cycles.
 	// Current coverage overlaps with GraceTimerFiresAfterReconnect and StaleGraceTimer tests.
 	t.Skip("incomplete: needs proper second-cycle drop to test epoch mismatch")
@@ -527,7 +527,7 @@ func TestComponent_Resume_StaleGraceTimerIgnored(t *testing.T) {
 
 // ── Transport callbacks: drop fires on suspend ──────────────────────────────
 
-func TestComponent_OnTransportDrop_FiresOnSuspend(t *testing.T) {
+func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	dropErr := make(chan error, 1)
@@ -563,7 +563,7 @@ func TestComponent_OnTransportDrop_FiresOnSuspend(t *testing.T) {
 
 // ── Transport callbacks: restore fires on resume ────────────────────────────
 
-func TestComponent_OnTransportRestore_FiresOnResume(t *testing.T) {
+func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -600,7 +600,7 @@ func TestComponent_OnTransportRestore_FiresOnResume(t *testing.T) {
 
 // ── Transport callbacks: not fired without resume window ────────────────────
 
-func TestComponent_TransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
+func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -646,7 +646,7 @@ func TestComponent_TransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T)
 
 // ── Resume: concurrent reconnect (race detector) ────────────────────────────
 
-func TestComponent_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
+func TestResume_ConcurrentReconnect_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 10)
@@ -705,7 +705,7 @@ func TestComponent_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 
 // ── Resume: concurrent broadcast during resume (race detector) ──────────────
 
-func TestComponent_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
+func TestResume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -762,7 +762,7 @@ func TestComponent_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 
 // ── Resume: stale closed session reconnect ──────────────────────────────────
 
-func TestComponent_Resume_StaleClosedSession_Reconnect(t *testing.T) {
+func TestResume_StaleClosedSession_Reconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 4)
 	disconnected := make(chan struct{}, 4)
@@ -827,7 +827,7 @@ func TestComponent_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 
 // ── Resume: multiple rapid drop/reconnect cycles ────────────────────────────
 
-func TestComponent_Resume_MultipleRapidCycles(t *testing.T) {
+func TestResume_MultipleRapidCycles(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 10)
@@ -886,7 +886,7 @@ func TestComponent_Resume_MultipleRapidCycles(t *testing.T) {
 
 // ── Resume: grace expires after Connection.Close ────────────────────────────
 
-func TestComponent_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
+func TestResume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	dropped := make(chan struct{}, 1)
@@ -951,7 +951,7 @@ func TestComponent_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 
 // ── Resume: kick while connected, transport died handled ────────────────────
 
-func TestComponent_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
+func TestResume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -989,7 +989,7 @@ func TestComponent_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) 
 
 // ── Resume: duplicate ID while connected kicks old ──────────────────────────
 
-func TestComponent_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
+func TestResume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	t.Parallel()
 	var (
 		firstConnected = make(chan struct{})
@@ -1032,7 +1032,7 @@ func TestComponent_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 
 // ── Resume: writePump stops on pumpQuit ─────────────────────────────────────
 
-func TestComponent_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
+func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -1094,7 +1094,7 @@ func TestComponent_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 
 // ── Resume: writePump exits via pumpQuit (long ping) ────────────────────────
 
-func TestComponent_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
+func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -1149,7 +1149,7 @@ func TestComponent_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
 
 // ── Resume: Connection.Close while suspended then reconnect ─────────────────
 
-func TestComponent_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
+func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 4)
 
@@ -1192,7 +1192,7 @@ func TestComponent_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing
 
 // ── Resume: stale closed session fires OnDisconnect ─────────────────────────
 
-func TestComponent_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
+func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 4)
 	disconnected := make(chan struct{}, 4)
@@ -1248,7 +1248,7 @@ func TestComponent_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 
 // ── Resume: drain buffer full ───────────────────────────────────────────────
 
-func TestComponent_Resume_DrainBufferFull(t *testing.T) {
+func TestResume_DrainBufferFull(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -1318,7 +1318,7 @@ func TestComponent_Resume_DrainBufferFull(t *testing.T) {
 
 // ── Resume: Connection.Close while suspended fires OnDisconnect ─────────────
 
-func TestComponent_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
+func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
@@ -1374,7 +1374,7 @@ func TestComponent_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *tes
 
 // ── Resume: Connection.Close fires OnDisconnect immediately ─────────────────
 
-func TestComponent_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
+func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{})
@@ -1432,7 +1432,7 @@ func TestComponent_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 
 // ── Resume: mass close while suspended, all OnDisconnect fire ───────────────
 
-func TestComponent_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
+func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	t.Parallel()
 	const count = 50 // reduced from 200 for component tests
 
@@ -1520,7 +1520,7 @@ func TestComponent_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) 
 
 // ── Resume: close races with transport died ─────────────────────────────────
 
-func TestComponent_Resume_CloseRacesTransportDied(t *testing.T) {
+func TestResume_CloseRacesTransportDied(t *testing.T) {
 	t.Parallel()
 	const count = 50
 
@@ -1602,7 +1602,7 @@ func TestComponent_Resume_CloseRacesTransportDied(t *testing.T) {
 
 // ── Resume: grace timer fires after reconnect (stale, stateConnected) ───────
 
-func TestComponent_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
+func TestResume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -1669,7 +1669,7 @@ func TestComponent_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 
 // ── Resume: stale grace timer (epoch mismatch) ──────────────────────────────
 
-func TestComponent_Resume_StaleGraceTimer(t *testing.T) {
+func TestResume_StaleGraceTimer(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 10)
 	disconnected := make(chan struct{}, 10)
@@ -1745,7 +1745,7 @@ func TestComponent_Resume_StaleGraceTimer(t *testing.T) {
 
 // ── Connection.Close stateClosed then transport dies ─────────────────────────
 
-func TestComponent_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
+func TestConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
@@ -1790,7 +1790,7 @@ func TestComponent_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 
 // ── Connection.Close stateClosed then resume attempt ────────────────────────
 
-func TestComponent_ConnectionClose_StateClosed_Resume(t *testing.T) {
+func TestConnectionClose_StateClosed_Resume(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 2)
 	disconnected := make(chan struct{}, 1)
@@ -1834,7 +1834,7 @@ func TestComponent_ConnectionClose_StateClosed_Resume(t *testing.T) {
 
 // ── OnTransportDrop: grace expires then disconnect ──────────────────────────
 
-func TestComponent_OnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
+func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	t.Parallel()
 	events := make(chan string, 4)
 	fc := newFakeClock()
@@ -1887,7 +1887,7 @@ func TestComponent_OnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 
 // ── OnTransportRestore: then OnMessage ──────────────────────────────────────
 
-func TestComponent_OnTransportRestore_ThenOnMessage(t *testing.T) {
+func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	t.Parallel()
 	events := make(chan string, 4)
 	connected := make(chan struct{}, 2)
@@ -1949,7 +1949,7 @@ func TestComponent_OnTransportRestore_ThenOnMessage(t *testing.T) {
 
 // ── OnTransportRestore: fires after state connected ─────────────────────────
 
-func TestComponent_OnTransportRestore_FiresAfterStateConnected(t *testing.T) {
+func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -1997,7 +1997,7 @@ func TestComponent_OnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 
 // ── OnTransportRestore: not fired on closed session ─────────────────────────
 
-func TestComponent_OnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
+func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 2)
 	dropped := make(chan struct{}, 1)

@@ -48,7 +48,7 @@ func (r *recordingCollector) eventsByName(name string) []metricsEvent {
 
 // ── Metrics: connection lifecycle ───────────────────────────────────────────
 
-func TestComponent_MetricsCollector_ConnectionLifecycle(t *testing.T) {
+func TestMetricsCollector_ConnectionLifecycle(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
@@ -92,7 +92,7 @@ func TestComponent_MetricsCollector_ConnectionLifecycle(t *testing.T) {
 
 // ── Metrics: message flow ───────────────────────────────────────────────────
 
-func TestComponent_MetricsCollector_MessageFlow(t *testing.T) {
+func TestMetricsCollector_MessageFlow(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 4)
@@ -148,7 +148,7 @@ func TestComponent_MetricsCollector_MessageFlow(t *testing.T) {
 
 // ── Metrics: resume attempt ─────────────────────────────────────────────────
 
-func TestComponent_MetricsCollector_ResumeAttempt(t *testing.T) {
+func TestMetricsCollector_ResumeAttempt(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 2)
@@ -189,7 +189,7 @@ func TestComponent_MetricsCollector_ResumeAttempt(t *testing.T) {
 
 // ── Metrics: frame dropped (send buffer full) ───────────────────────────────
 
-func TestComponent_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
+func TestMetricsCollector_FrameDropped_SendFull(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan wspulse.Connection, 1)
@@ -229,7 +229,7 @@ func TestComponent_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
 
 // ── Metrics: frame dropped (broadcast drop-oldest while suspended) ──────────
 
-func TestComponent_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
+func TestMetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
@@ -279,7 +279,7 @@ func TestComponent_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.
 // This metric is tested indirectly: the readPump checks for net.Error.Timeout()
 // on the ReadMessage error. We can simulate this.
 
-func TestComponent_MetricsCollector_PongTimeout(t *testing.T) {
+func TestMetricsCollector_PongTimeout(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
@@ -322,7 +322,7 @@ func (e *timeoutError) Temporary() bool { return false }
 
 // ── Metrics: shutdown ───────────────────────────────────────────────────────
 
-func TestComponent_MetricsCollector_Shutdown(t *testing.T) {
+func TestMetricsCollector_Shutdown(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 4)

@@ -20,7 +20,7 @@ import (
 
 // ── ReadPump panic recovery ─────────────────────────────────────────────────
 
-func TestComponent_ReadPumpPanicRecovery(t *testing.T) {
+func TestReadPumpPanicRecovery(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -51,7 +51,7 @@ func TestComponent_ReadPumpPanicRecovery(t *testing.T) {
 	}
 }
 
-func TestComponent_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
+func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnectErr := make(chan error, 1)
@@ -88,7 +88,7 @@ func TestComponent_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 
 // ── ReadPump malformed frame ────────────────────────────────────────────────
 
-func TestComponent_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
+func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	received := make(chan wspulse.Frame, 2)
@@ -122,7 +122,7 @@ func TestComponent_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 
 // ── Broadcast drop-oldest with slow client ──────────────────────────────────
 
-func TestComponent_BroadcastDropsOldest_SlowClient(t *testing.T) {
+func TestBroadcastDropsOldest_SlowClient(t *testing.T) {
 	t.Parallel()
 	const bufferSize = 2
 	const totalBroadcasts = 200
@@ -182,7 +182,7 @@ func TestComponent_BroadcastDropsOldest_SlowClient(t *testing.T) {
 
 // ── Concurrent broadcast ────────────────────────────────────────────────────
 
-func TestComponent_ConcurrentBroadcast_NoRace(t *testing.T) {
+func TestConcurrentBroadcast_NoRace(t *testing.T) {
 	t.Parallel()
 	const workers = 8
 	const messagesPerWorker = 50
@@ -218,7 +218,7 @@ func TestComponent_ConcurrentBroadcast_NoRace(t *testing.T) {
 
 // ── Concurrent close and kick ───────────────────────────────────────────────
 
-func TestComponent_ConcurrentCloseAndKick_NoRace(t *testing.T) {
+func TestConcurrentCloseAndKick_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -248,7 +248,7 @@ func TestComponent_ConcurrentCloseAndKick_NoRace(t *testing.T) {
 
 // ── Concurrent close and broadcast ──────────────────────────────────────────
 
-func TestComponent_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
+func TestConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -280,7 +280,7 @@ func TestComponent_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 
 // ── Close blocks until hub exits ────────────────────────────────────────────
 
-func TestComponent_Close_BlocksUntilHubExits(t *testing.T) {
+func TestClose_BlocksUntilHubExits(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -307,7 +307,7 @@ func TestComponent_Close_BlocksUntilHubExits(t *testing.T) {
 
 // ── Connection.Send after Close ─────────────────────────────────────────────
 
-func TestComponent_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
+func TestConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
@@ -345,7 +345,7 @@ func TestComponent_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testi
 
 // ── Broadcast skips closed session ──────────────────────────────────────────
 
-func TestComponent_Broadcast_SkipsClosedSession(t *testing.T) {
+func TestBroadcast_SkipsClosedSession(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -375,7 +375,7 @@ func TestComponent_Broadcast_SkipsClosedSession(t *testing.T) {
 
 // ── GetConnections empty after disconnect ───────────────────────────────────
 
-func TestComponent_GetConnections_EmptyAfterDisconnect(t *testing.T) {
+func TestGetConnections_EmptyAfterDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -423,7 +423,7 @@ func (failingCodec) Decode(data []byte) (wspulse.Frame, error) {
 
 func (failingCodec) FrameType() int { return wspulse.TextMessage }
 
-func TestComponent_Broadcast_EncodeError_ReturnsError(t *testing.T) {
+func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
@@ -441,7 +441,7 @@ func TestComponent_Broadcast_EncodeError_ReturnsError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestComponent_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
+func TestConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
@@ -468,7 +468,7 @@ func TestComponent_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 
 // ── No OnMessage — readPump still processes ─────────────────────────────────
 
-func TestComponent_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
+func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
@@ -502,7 +502,7 @@ func TestComponent_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 
 // ── HTTP-layer tests (use httptest, no mock transport) ──────────────────────
 
-func TestComponent_ConnectFunc_RejectReturns401(t *testing.T) {
+func TestConnectFunc_RejectReturns401(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
 		return "", "", errors.New("internal: db connection pool exhausted")
@@ -521,7 +521,7 @@ func TestComponent_ConnectFunc_RejectReturns401(t *testing.T) {
 		"internal error must not leak")
 }
 
-func TestComponent_ServeHTTP_AfterClose_Returns503(t *testing.T) {
+func TestServeHTTP_AfterClose_Returns503(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(acceptAll)
 	ts := httptest.NewServer(srv)
@@ -535,7 +535,7 @@ func TestComponent_ServeHTTP_AfterClose_Returns503(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 }
 
-func TestComponent_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
+func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewServer(
@@ -566,7 +566,7 @@ func TestComponent_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 
 // ── Connection.Send with done closed ────────────────────────────────────────
 
-func TestComponent_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
+func TestConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
@@ -605,7 +605,7 @@ func TestComponent_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 
 // ── Close while connecting ──────────────────────────────────────────────────
 
-func TestComponent_CloseWhileConnecting_NoLeak(t *testing.T) {
+func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(
 		func(r *http.Request) (string, string, error) {
@@ -633,7 +633,7 @@ func TestComponent_CloseWhileConnecting_NoLeak(t *testing.T) {
 
 // ── HubShutdown ReadPump inline cleanup ─────────────────────────────────────
 
-func TestComponent_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
+func TestHubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewServer(
