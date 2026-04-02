@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/gorilla/websocket"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	wspulse "github.com/wspulse/server"
@@ -16,7 +15,7 @@ func TestNewTestServer_ReturnsWSURL(t *testing.T) {
 	url := wspulse.NewTestServer(t, func(r *http.Request) (string, string, error) {
 		return "room", "", nil
 	})
-	assert.True(t, strings.HasPrefix(url, "ws://"),
+	require.True(t, strings.HasPrefix(url, "ws://"),
 		"expected ws:// prefix, got %q", url)
 
 	c, _, err := websocket.DefaultDialer.Dial(url, nil)

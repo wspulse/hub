@@ -210,7 +210,7 @@ func TestServer_OnMessage_CallbackFires(t *testing.T) {
 	case f := <-received:
 		assert.Equal(t, "msg", f.Event)
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnMessage callback")
+		require.Fail(t, "timed out waiting for OnMessage callback")
 	}
 }
 
@@ -231,7 +231,7 @@ func TestServer_Broadcast_ReachesConnectedClient(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	frame := wspulse.Frame{Event: "notice", Payload: []byte(`"hello room"`)}
 	require.NoError(t, srv.Broadcast("test-room", frame), "Broadcast failed")
@@ -266,7 +266,7 @@ func TestServer_OnDisconnect_CallbackFires(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect callback")
+		require.Fail(t, "timed out waiting for OnDisconnect callback")
 	}
 }
 
@@ -287,7 +287,7 @@ func TestServer_Send_DeliversFrameToConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	frame := wspulse.Frame{Event: "direct", Payload: []byte(`"hi"`)}
 	require.NoError(t, srv.Send("test-connection", frame), "Send failed")
@@ -321,13 +321,13 @@ func TestServer_Kick_ClosesConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnection after Kick")
+		require.Fail(t, "timed out waiting for disconnection after Kick")
 	}
 }
 
@@ -348,7 +348,7 @@ func TestServer_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	connections := srv.GetConnections("test-room")
 	require.Len(t, connections, 1)
@@ -395,7 +395,7 @@ func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	select {
 	case <-firstConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connection")
+		require.Fail(t, "timed out waiting for first connection")
 	}
 
 	// Establish second connection with the same connectionID — first must be kicked.
@@ -403,12 +403,12 @@ func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	select {
 	case <-kicked:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for ErrDuplicateConnectionID kick")
+		require.Fail(t, "timed out waiting for ErrDuplicateConnectionID kick")
 	}
 	select {
 	case <-secondConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second connection to be registered")
+		require.Fail(t, "timed out waiting for second connection to be registered")
 	}
 
 	// Round-trip a frame to prove the hub has processed all events
@@ -455,7 +455,7 @@ func TestServer_ConcurrentBroadcast_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection")
+		require.Fail(t, "timed out waiting for connection")
 	}
 
 	var wg sync.WaitGroup
@@ -544,7 +544,7 @@ func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection")
+		require.Fail(t, "timed out waiting for connection")
 	}
 
 	for i := 0; i < totalBroadcasts; i++ {
@@ -640,7 +640,7 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 	select {
 	case <-allConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for all connections to register")
+		require.Fail(t, "timed out waiting for all connections to register")
 	}
 	srv.Close()
 
@@ -648,7 +648,7 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 	case <-allDone:
 	case <-time.After(3 * time.Second):
 		mu.Lock()
-		t.Fatalf("timed out: only %d/%d OnDisconnect callbacks fired", len(disconnected), connectionCount)
+		require.Failf(t, "timed out", "only %d/%d OnDisconnect callbacks fired", len(disconnected), connectionCount)
 		mu.Unlock()
 	}
 
@@ -684,7 +684,7 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after panic")
+		require.Fail(t, "timed out waiting for OnDisconnect after panic")
 	}
 }
 
@@ -718,7 +718,7 @@ func TestServer_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 		require.NotEmpty(t, pe.Stack, "PanicError.Stack is empty, expected goroutine stack trace")
 		require.Equal(t, "wspulse: onMessage panic: typed-boom", pe.Error())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 }
 
@@ -740,14 +740,14 @@ func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T)
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	deadline := time.After(3 * time.Second)
 	for {
 		select {
 		case <-deadline:
-			t.Fatal("timed out: never saw ErrSendBufferFull")
+			require.Fail(t, "timed out: never saw ErrSendBufferFull")
 		default:
 		}
 		err := connection.Send(wspulse.Frame{Event: "flood"})
@@ -755,7 +755,7 @@ func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T)
 			return // success
 		}
 		if errors.Is(err, wspulse.ErrConnectionClosed) {
-			t.Fatal("connection closed before buffer-full was observed")
+			require.Fail(t, "connection closed before buffer-full was observed")
 		}
 		require.NoError(t, err)
 	}
@@ -778,7 +778,7 @@ func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = srv.Kick(connection.ID())
@@ -786,7 +786,7 @@ func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
 	select {
 	case <-connection.Done():
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for Connection.Done()")
+		require.Fail(t, "timed out waiting for Connection.Done()")
 	}
 }
 
@@ -831,7 +831,7 @@ func TestServer_MultipleRooms_BroadcastIsolation(t *testing.T) {
 		select {
 		case <-connected:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("timed out waiting for connection %d", i+1)
+			require.Failf(t, "timed out", "waiting for connection %d", i+1)
 		}
 	}
 
@@ -868,7 +868,7 @@ func TestServer_GetConnections_EmptyAfterDisconnect(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect")
+		require.Fail(t, "timed out waiting for disconnect")
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -917,19 +917,19 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired during resume window — should not happen")
+		require.Fail(t, "OnDisconnect fired during resume window — should not happen")
 	default:
 	}
 
@@ -942,7 +942,7 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport restore")
+		require.Fail(t, "timed out waiting for transport restore")
 	}
 
 	frame := wspulse.Frame{Event: "after-resume", Payload: []byte(`"ok"`)}
@@ -955,7 +955,7 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired after successful resume")
+		require.Fail(t, "OnDisconnect fired after successful resume")
 	default:
 	}
 }
@@ -996,7 +996,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -1004,7 +1004,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Verify the grace timer was registered with the correct duration.
@@ -1015,7 +1015,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after grace expiry")
+		require.Fail(t, "timed out waiting for OnDisconnect after grace expiry")
 	}
 }
 
@@ -1046,14 +1046,14 @@ func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	for i := 0; i < 3; i++ {
@@ -1111,7 +1111,7 @@ func TestServer_Resume_KickBypassesWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
@@ -1119,7 +1119,7 @@ func TestServer_Resume_KickBypassesWindow(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after Kick (should bypass resume window)")
+		require.Fail(t, "timed out waiting for OnDisconnect after Kick (should bypass resume window)")
 	}
 }
 
@@ -1150,7 +1150,7 @@ func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -1158,7 +1158,7 @@ func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect (no resume window)")
+		require.Fail(t, "timed out waiting for OnDisconnect (no resume window)")
 	}
 }
 
@@ -1195,14 +1195,14 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	srv.Close()
@@ -1210,7 +1210,7 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect from Server.Close on suspended session")
+		require.Fail(t, "timed out waiting for OnDisconnect from Server.Close on suspended session")
 	}
 }
 
@@ -1241,14 +1241,14 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	_ = srv.Broadcast("test-room", wspulse.Frame{Event: "bcast", Payload: []byte(`"suspended"`)})
@@ -1314,20 +1314,20 @@ func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 			select {
 			case <-connected:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for connect", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for connect", i)
 			}
 		} else {
 			select {
 			case <-restored:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for transport restore", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for transport restore", i)
 			}
 		}
 		_ = c.Close()
 		select {
 		case <-dropped:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("cycle %d: timed out waiting for transport drop", i)
+			require.Failf(t, "timed out", "cycle %d: waiting for transport drop", i)
 		}
 		successCount++
 	}
@@ -1368,7 +1368,7 @@ func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Start concurrent broadcasts, then close the transport to trigger
@@ -1389,7 +1389,7 @@ func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	// Reconnect while broadcasts are still in flight.
@@ -1449,7 +1449,7 @@ func TestServer_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	case c := <-connected:
 		assert.NotEmpty(t, c.ID(), "expected non-empty auto-generated connectionID")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 }
 
@@ -1471,7 +1471,7 @@ func TestServer_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = srv.Kick(connection.ID())
@@ -1501,7 +1501,7 @@ func TestServer_Broadcast_SkipsClosedSession(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out")
+		require.Fail(t, "timed out")
 	}
 
 	_ = srv.Kick("test-connection")
@@ -1535,7 +1535,7 @@ func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	case f := <-received:
 		assert.Equal(t, "valid", f.Event)
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for valid frame after malformed one")
+		require.Fail(t, "timed out waiting for valid frame after malformed one")
 	}
 }
 
@@ -1579,7 +1579,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Close transport and fire the grace timer.
@@ -1587,7 +1587,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	fc.Fire(0)
@@ -1595,7 +1595,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for grace expiry disconnect")
+		require.Fail(t, "timed out waiting for grace expiry disconnect")
 	}
 
 	// Reconnect with the same connectionID — hits stateClosed branch.
@@ -1608,7 +1608,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for reconnect after stale session cleanup")
+		require.Fail(t, "timed out waiting for reconnect after stale session cleanup")
 	}
 
 	// Verify the new connection works.
@@ -1638,7 +1638,7 @@ func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close should block until hub goroutine is done.
@@ -1652,7 +1652,7 @@ func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
 		// After Close returns, a second Close must return immediately.
 		srv.Close()
 	case <-time.After(5 * time.Second):
-		t.Fatal("Close() did not return within timeout")
+		require.Fail(t, "Close() did not return within timeout")
 	}
 }
 
@@ -1674,7 +1674,7 @@ func TestServer_ConcurrentCloseAndKick_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	var wg sync.WaitGroup
@@ -1708,7 +1708,7 @@ func TestServer_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	var wg sync.WaitGroup
@@ -1763,7 +1763,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the transport to trigger suspend.
@@ -1771,7 +1771,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	// Application calls Close() on the Connection while suspended.
@@ -1781,7 +1781,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case <-connection.Done():
 	case <-time.After(3 * time.Second):
-		t.Fatal("Done() not closed after Close()")
+		require.Fail(t, "Done() not closed after Close()")
 	}
 }
 
@@ -1829,21 +1829,21 @@ func TestServer_Resume_MultipleRapidCycles(t *testing.T) {
 			select {
 			case <-connected:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for connect", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for connect", i)
 			}
 		} else {
 			// Subsequent dials are resume reconnections.
 			select {
 			case <-restored:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for transport restore", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for transport restore", i)
 			}
 		}
 		_ = c.Close()
 		select {
 		case <-dropped:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("cycle %d: timed out waiting for transport drop", i)
+			require.Failf(t, "timed out", "cycle %d: waiting for transport drop", i)
 		}
 	}
 }
@@ -1866,7 +1866,7 @@ func TestServer_Broadcast_EncodeError_ReturnsError(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "fail"})
@@ -1890,7 +1890,7 @@ func TestServer_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	err := connection.Send(wspulse.Frame{Event: "fail"})
@@ -1931,7 +1931,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close transport → session suspends.
@@ -1939,7 +1939,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Application calls Close() on the Connection while suspended.
@@ -1959,7 +1959,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("want 0 connections after grace expired, got %d", len(connections))
+			require.Failf(t, "want 0 connections after grace expired", "got %d", len(connections))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -2014,13 +2014,13 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first drop")
+		require.Fail(t, "timed out waiting for first drop")
 	}
 
 	// Cycle 2: reconnect (resume, epoch bumped), disconnect again. Timer 1 (epoch=2).
@@ -2031,13 +2031,13 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first restore")
+		require.Fail(t, "timed out waiting for first restore")
 	}
 	_ = c2.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second drop")
+		require.Fail(t, "timed out waiting for second drop")
 	}
 
 	// Cycle 3: reconnect again (resume, epoch bumped again).
@@ -2047,7 +2047,7 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second restore")
+		require.Fail(t, "timed out waiting for second restore")
 	}
 
 	// Fire old timers (epoch=1, epoch=2) — both should be detected as stale.
@@ -2067,7 +2067,7 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	// After round-trip, verify OnDisconnect was not fired.
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired — stale timer was not correctly ignored")
+		require.Fail(t, "OnDisconnect fired — stale timer was not correctly ignored")
 	default:
 	}
 }
@@ -2103,7 +2103,7 @@ func TestServer_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
@@ -2113,7 +2113,7 @@ func TestServer_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 	time.Sleep(200 * time.Millisecond) // let deferred cleanup finish
 }
@@ -2168,7 +2168,7 @@ func TestServer_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 	select {
 	case <-allConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for all connections")
+		require.Fail(t, "timed out waiting for all connections")
 	}
 
 	// Close the server — hub shuts down, readPumps should cleanup inline.
@@ -2209,7 +2209,7 @@ func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	select {
 	case <-firstConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connection")
+		require.Fail(t, "timed out waiting for first connection")
 	}
 
 	// Second connection with same ID while first is still connected (not suspended).
@@ -2217,7 +2217,7 @@ func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	select {
 	case <-kicked:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for duplicate kick")
+		require.Fail(t, "timed out waiting for duplicate kick")
 	}
 }
 
@@ -2244,7 +2244,7 @@ func TestServer_PongHandler_ResetsReadDeadline(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Keep reading for long enough to receive at least one Ping+Pong cycle.
@@ -2290,7 +2290,7 @@ func TestServer_NormalCloseFrame_LogsNormally(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect")
+		require.Fail(t, "timed out waiting for disconnect")
 	}
 }
 
@@ -2319,7 +2319,7 @@ func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Send data before closing to ensure writePump is active.
@@ -2390,7 +2390,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Close transport → session suspends.
@@ -2415,7 +2415,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for new session after stale cleanup")
+		require.Fail(t, "timed out waiting for new session after stale cleanup")
 	}
 
 	// Verify new session works.
@@ -2487,7 +2487,7 @@ func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 		for connects.Load() < target {
 			select {
 			case <-deadline.C:
-				t.Fatalf("timeout waiting for connect on cycle %d", i)
+				require.Failf(t, "timed out", "waiting for connect on cycle %d", i)
 			default:
 				time.Sleep(time.Millisecond)
 			}
@@ -2508,8 +2508,8 @@ func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	for disconnects.Load() < wantDisconnects {
 		select {
 		case <-deadline:
-			t.Fatalf("connects=%d disconnects=%d: onDisconnect not fired for all sessions",
-				connects.Load(), disconnects.Load())
+			require.Failf(t, "onDisconnect not fired for all sessions",
+				"connects=%d disconnects=%d", connects.Load(), disconnects.Load())
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -2537,7 +2537,7 @@ func TestServer_Broadcast_SkipsDirectlyClosedSession(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the connection directly — done is closed, but session stays in maps.
@@ -2572,7 +2572,7 @@ func TestServer_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close client transport to trigger suspend. With long ping period,
@@ -2617,7 +2617,7 @@ func TestServer_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Flood the send buffer then close, racing enqueue against done.
@@ -2670,7 +2670,7 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Send a proper WebSocket close frame with CloseGoingAway (1001).
@@ -2693,7 +2693,7 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect")
+		require.Fail(t, "timed out waiting for onDisconnect")
 	}
 
 	// Close the client connection after the server has finished cleanup.
@@ -2726,7 +2726,7 @@ func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the session externally — this sets state to stateClosed
@@ -2738,7 +2738,7 @@ func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect after Connection.Close()")
+		require.Fail(t, "timed out waiting for onDisconnect after Connection.Close()")
 	}
 }
 
@@ -2790,7 +2790,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Disconnect (triggers suspend + grace timer via fakeClock).
@@ -2798,7 +2798,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect before firing the grace timer.
@@ -2810,7 +2810,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport restore")
+		require.Fail(t, "timed out waiting for transport restore")
 	}
 
 	// Fire the grace timer — session is already resumed (stateConnected),
@@ -2828,7 +2828,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 
 	select {
 	case <-disconnected:
-		t.Fatal("onDisconnect should not fire — session was resumed before timer")
+		require.Fail(t, "onDisconnect should not fire — session was resumed before timer")
 	default:
 	}
 }
@@ -2865,7 +2865,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Disconnect (suspend epoch=1, timer A set for 1s).
@@ -2889,7 +2889,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 	case <-disconnected:
 		// Only one onDisconnect should fire (from timer B).
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect from second grace timer")
+		require.Fail(t, "timed out waiting for onDisconnect from second grace timer")
 	}
 }
 
@@ -2920,7 +2920,7 @@ func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close externally → state becomes stateClosed before transport dies.
@@ -2931,7 +2931,7 @@ func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect")
+		require.Fail(t, "timed out waiting for onDisconnect")
 	}
 }
 
@@ -2967,7 +2967,7 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Disconnect to enter suspended state.
@@ -3002,7 +3002,7 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 	// Session should still be alive.
 	select {
 	case <-disconnected:
-		t.Fatal("onDisconnect should not fire after successful resume")
+		require.Fail(t, "onDisconnect should not fire after successful resume")
 	default:
 	}
 }
@@ -3037,7 +3037,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Drop the transport — session enters suspended state.
@@ -3057,7 +3057,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("onDisconnect did not fire after Connection.Close() on suspended session")
+		require.Fail(t, "onDisconnect did not fire after Connection.Close() on suspended session")
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
@@ -3099,7 +3099,7 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Drop the transport — session enters suspended state.
@@ -3120,7 +3120,7 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 		require.Less(t, time.Since(start), wantWithin,
 			"onDisconnect took too long after Connection.Close()")
 	case <-time.After(gracePeriod):
-		t.Fatalf("onDisconnect did not fire within %v; fired after full grace window instead", gracePeriod)
+		require.Failf(t, "onDisconnect fired after full grace window", "did not fire within %v", gracePeriod)
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
@@ -3181,7 +3181,7 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	select {
 	case <-allConnected:
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for all connections")
+		require.Fail(t, "timed out waiting for all connections")
 	}
 
 	// Drop all transports → all sessions enter suspended state.
@@ -3212,7 +3212,7 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	case <-allDisconnected:
 	case <-time.After(5 * time.Second):
 		got := disconnectCount.Load()
-		t.Fatalf("want %d onDisconnect calls, got %d (lost %d)", count, got, count-got)
+		require.Failf(t, "onDisconnect count mismatch", "want %d, got %d (lost %d)", count, got, count-got)
 	}
 }
 
@@ -3283,7 +3283,7 @@ func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
 	case <-allDisconnected:
 	case <-time.After(3 * time.Second):
 		got := disconnectCount.Load()
-		t.Fatalf("want %d onDisconnect within 3s, got %d (delayed by grace window?)", count, got)
+		require.Failf(t, "onDisconnect delayed by grace window", "want %d within 3s, got %d", count, got)
 	}
 }
 
@@ -3315,7 +3315,7 @@ func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -3324,14 +3324,14 @@ func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	case conn := <-dropped:
 		assert.Equal(t, "test-connection", conn.ID())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// err may be nil for a normal closure (CloseNormalClosure).
 	select {
 	case <-droppedErr:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop error")
+		require.Fail(t, "timed out waiting for OnTransportDrop error")
 	}
 }
 
@@ -3366,14 +3366,14 @@ func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with same connectionID.
@@ -3387,7 +3387,7 @@ func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 	case conn := <-restored:
 		assert.Equal(t, "test-connection", conn.ID())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportRestore")
+		require.Fail(t, "timed out waiting for OnTransportRestore")
 	}
 }
 
@@ -3432,7 +3432,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -3440,7 +3440,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 
 	// Verify transport callbacks did not fire (no resume window configured).
@@ -3485,7 +3485,7 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	case e := <-events:
 		require.Equal(t, "connect", e, "first event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect event")
+		require.Fail(t, "timed out waiting for connect event")
 	}
 
 	_ = c.Close()
@@ -3495,7 +3495,7 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	case e := <-events:
 		require.Equal(t, "drop", e, "second event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for drop event")
+		require.Fail(t, "timed out waiting for drop event")
 	}
 
 	fc.Fire(0)
@@ -3504,7 +3504,7 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	case e := <-events:
 		require.Equal(t, "disconnect", e, "third event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect event")
+		require.Fail(t, "timed out waiting for disconnect event")
 	}
 }
 
@@ -3542,14 +3542,14 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect.
@@ -3564,7 +3564,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	case e := <-events:
 		require.Equal(t, "restore", e, "first event after reconnect")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for restore event")
+		require.Fail(t, "timed out waiting for restore event")
 	}
 
 	// Now send a message on the new transport.
@@ -3576,7 +3576,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	case e := <-events:
 		require.Equal(t, "message", e, "second event after reconnect")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for message event")
+		require.Fail(t, "timed out waiting for message event")
 	}
 }
 
@@ -3621,14 +3621,14 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with same connectionID.
@@ -3688,7 +3688,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Drop transport → session suspends, OnTransportDrop fires and calls Close().
@@ -3696,7 +3696,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with the same connectionID immediately. Depending on
@@ -3711,7 +3711,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 
 	select {
 	case <-restoreFired:
-		t.Fatal("OnTransportRestore fired on a closed session")
+		require.Fail(t, "OnTransportRestore fired on a closed session")
 	case <-time.After(200 * time.Millisecond):
 		// OK — callback did not fire for the closed session.
 	}
