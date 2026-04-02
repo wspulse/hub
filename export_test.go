@@ -19,9 +19,14 @@ func WithClock(c Clock) ServerOption {
 // inject mock transports without HTTP upgrade.
 func InjectTransport(srv Server, connectionID, roomID string, transport wspulsecore.Transport) {
 	s := srv.(*internalServer)
-	s.hub.register <- registerMessage{
+	msg := registerMessage{
 		connectionID: connectionID,
 		roomID:       roomID,
 		transport:    transport,
+	}
+	select {
+	case s.hub.register <- msg:
+	case <-s.hub.done:
+		panic("wspulse: InjectTransport: hub is stopped; cannot inject transport")
 	}
 }

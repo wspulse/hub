@@ -344,17 +344,23 @@ func TestComponent_MultipleRooms_BroadcastIsolation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "hello", f.Event)
 
-	// room-b client should NOT receive it.
-	time.Sleep(50 * time.Millisecond) // brief wait
-	writes := mtB.DrainWrites()
-	// Filter out ping frames — only check data frames.
-	var dataWrites []writeCall
-	for _, wr := range writes {
-		if wr.messageType == websocket.TextMessage {
-			dataWrites = append(dataWrites, wr)
+	// room-b client should NOT receive any data frames.
+	// Use WaitWrite with short timeout instead of time.Sleep.
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		wb, ok := mtB.WaitWrite(remaining)
+		if !ok {
+			break // no more writes within window
+		}
+		if wb.messageType == websocket.TextMessage {
+			assert.Fail(t, "room-b should not receive room-a broadcast")
+			break
 		}
 	}
-	assert.Empty(t, dataWrites, "room-b should not receive room-a broadcast")
 }
 
 // ── Shutdown fires OnDisconnect ─────────────────────────────────────────────

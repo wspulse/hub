@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
-	wspulse "github.com/wspulse/core"
+	core "github.com/wspulse/core"
 )
 
 // Connection represents a logical WebSocket session managed by the Server.
@@ -68,14 +68,14 @@ type session struct {
 	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex        // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    wspulse.Transport // current physical connection; nil when suspended
-	pumpQuit     chan struct{}     // closed to stop the current writePump
-	pumpDone     chan struct{}     // closed by writePump on exit
-	graceTimer   *time.Timer       // resume window timer; nil when not suspended
-	state        sessionState      // current lifecycle state
-	resumeBuffer *ringBuffer       // nil when resume is disabled
-	suspendEpoch uint64            // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex     // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport // current physical connection; nil when suspended
+	pumpQuit     chan struct{}  // closed to stop the current writePump
+	pumpDone     chan struct{}  // closed by writePump on exit
+	graceTimer   *time.Timer    // resume window timer; nil when not suspended
+	state        sessionState   // current lifecycle state
+	resumeBuffer *ringBuffer    // nil when resume is disabled
+	suspendEpoch uint64         // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -252,7 +252,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the hub's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport wspulse.Transport, h *hub, onResumeComplete func()) {
+func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump pair if still running.
@@ -413,7 +413,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the hub that this transport
 // has died. If the hub is shutting down, cleanup is handled inline.
-func (s *session) readPump(transport wspulse.Transport, h *hub) {
+func (s *session) readPump(transport core.Transport, h *hub) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -492,7 +492,7 @@ func (s *session) readPump(transport wspulse.Transport, h *hub) {
 //
 // pumpQuit is closed when this pump should stop (reconnect or session close).
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(transport wspulse.Transport, pumpQuit, pumpDone chan struct{}) {
+func (s *session) writePump(transport core.Transport, pumpQuit, pumpDone chan struct{}) {
 	ticker := s.config.clock.NewTicker(s.config.pingPeriod)
 	defer func() {
 		ticker.Stop()

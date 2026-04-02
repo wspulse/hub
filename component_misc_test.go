@@ -398,10 +398,14 @@ func TestComponent_GetConnections_EmptyAfterDisconnect(t *testing.T) {
 		require.Fail(t, "timed out waiting for disconnect")
 	}
 
-	// Brief sleep for hub to process removal.
-	time.Sleep(50 * time.Millisecond)
-	connections := srv.GetConnections("test-room")
-	assert.Empty(t, connections)
+	// Poll until hub processes removal instead of fixed sleep.
+	deadline := time.Now().Add(time.Second)
+	for len(srv.GetConnections("test-room")) > 0 {
+		if time.Now().After(deadline) {
+			require.Fail(t, "timed out waiting for hub to remove connection")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // ── Encode error paths ──────────────────────────────────────────────────────
@@ -547,7 +551,8 @@ func TestComponent_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
-	c, _, err := websocket.DefaultDialer.Dial(u, nil)
+	dialer := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
+	c, _, err := dialer.Dial(u, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.Close() })
 
