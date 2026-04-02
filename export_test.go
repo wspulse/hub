@@ -1,5 +1,7 @@
 package wspulse
 
+import wspulsecore "github.com/wspulse/core"
+
 // Clock exports the internal clock interface for testing only.
 type Clock = clock
 
@@ -10,4 +12,16 @@ func WithClock(c Clock) ServerOption {
 		panic("wspulse: WithClock: clock must not be nil")
 	}
 	return func(cfg *serverConfig) { cfg.clock = c }
+}
+
+// InjectTransport bypasses ServeHTTP and pushes a registerMessage directly
+// into the hub's register channel. Test-only — allows component tests to
+// inject mock transports without HTTP upgrade.
+func InjectTransport(srv Server, connectionID, roomID string, transport wspulsecore.Transport) {
+	s := srv.(*internalServer)
+	s.hub.register <- registerMessage{
+		connectionID: connectionID,
+		roomID:       roomID,
+		transport:    transport,
+	}
 }
