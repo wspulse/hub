@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/zap/zaptest"
 
@@ -24,9 +26,7 @@ func TestServer_Send_ErrConnectionNotFound(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Send("does-not-exist", wspulse.Frame{Event: "ping"})
-	if !errors.Is(err, wspulse.ErrConnectionNotFound) {
-		t.Fatalf("want ErrConnectionNotFound, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
 func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
@@ -34,9 +34,7 @@ func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Kick("does-not-exist")
-	if !errors.Is(err, wspulse.ErrConnectionNotFound) {
-		t.Fatalf("want ErrConnectionNotFound, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
 func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
@@ -44,9 +42,7 @@ func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	t.Cleanup(srv.Close)
 	connections := srv.GetConnections("no-such-room")
-	if len(connections) != 0 {
-		t.Fatalf("want 0 connections, got %d", len(connections))
-	}
+	require.Empty(t, connections)
 }
 
 func TestServer_Close_SafeToCallTwice(t *testing.T) {
@@ -58,12 +54,9 @@ func TestServer_Close_SafeToCallTwice(t *testing.T) {
 
 func TestWithCodec_Nil_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil codec")
-		}
-	}()
-	_ = wspulse.WithCodec(nil)
+	require.Panics(t, func() {
+		_ = wspulse.WithCodec(nil)
+	})
 }
 
 func TestWithHeartbeat_InvalidParams_Panics(t *testing.T) {
@@ -79,44 +72,32 @@ func TestWithHeartbeat_InvalidParams_Panics(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("expected panic for pingPeriod=%v pongWait=%v", tc.ping, tc.pong)
-				}
-			}()
-			_ = wspulse.WithHeartbeat(tc.ping, tc.pong)
+			require.Panics(t, func() {
+				_ = wspulse.WithHeartbeat(tc.ping, tc.pong)
+			}, "expected panic for pingPeriod=%v pongWait=%v", tc.ping, tc.pong)
 		})
 	}
 }
 
 func TestNewServer_NilConnect_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil ConnectFunc")
-		}
-	}()
-	_ = wspulse.NewServer(nil)
+	require.Panics(t, func() {
+		_ = wspulse.NewServer(nil)
+	})
 }
 
 func TestWithLogger_Nil_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil logger")
-		}
-	}()
-	_ = wspulse.WithLogger(nil)
+	require.Panics(t, func() {
+		_ = wspulse.WithLogger(nil)
+	})
 }
 
 func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for zero max message size")
-		}
-	}()
-	_ = wspulse.WithMaxMessageSize(0)
+	require.Panics(t, func() {
+		_ = wspulse.WithMaxMessageSize(0)
+	})
 }
 
 // ── Option validation tests ───────────────────────────────────────────────────
@@ -131,22 +112,16 @@ func TestWithHeartbeat_ValidParams_Accepted(t *testing.T) {
 
 func TestWithHeartbeat_PingExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for pingPeriod > 5m")
-		}
-	}()
-	_ = wspulse.WithHeartbeat(6*time.Minute, 10*time.Minute)
+	require.Panics(t, func() {
+		_ = wspulse.WithHeartbeat(6*time.Minute, 10*time.Minute)
+	})
 }
 
 func TestWithHeartbeat_PongExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for pongWait > 10m")
-		}
-	}()
-	_ = wspulse.WithHeartbeat(1*time.Minute, 11*time.Minute)
+	require.Panics(t, func() {
+		_ = wspulse.WithHeartbeat(1*time.Minute, 11*time.Minute)
+	})
 }
 
 func TestWithWriteWait_ValidDuration_Accepted(t *testing.T) {
@@ -159,22 +134,16 @@ func TestWithWriteWait_ValidDuration_Accepted(t *testing.T) {
 
 func TestWithWriteWait_Zero_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for zero write wait")
-		}
-	}()
-	_ = wspulse.WithWriteWait(0)
+	require.Panics(t, func() {
+		_ = wspulse.WithWriteWait(0)
+	})
 }
 
 func TestWithWriteWait_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for write wait > 30s")
-		}
-	}()
-	_ = wspulse.WithWriteWait(31 * time.Second)
+	require.Panics(t, func() {
+		_ = wspulse.WithWriteWait(31 * time.Second)
+	})
 }
 
 func TestWithMaxMessageSize_ValidSize_Accepted(t *testing.T) {
@@ -187,52 +156,37 @@ func TestWithMaxMessageSize_ValidSize_Accepted(t *testing.T) {
 
 func TestWithMaxMessageSize_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for size > 64 MiB")
-		}
-	}()
-	_ = wspulse.WithMaxMessageSize(64<<20 + 1)
+	require.Panics(t, func() {
+		_ = wspulse.WithMaxMessageSize(64<<20 + 1)
+	})
 }
 
 func TestWithSendBufferSize_Zero_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for zero buffer size")
-		}
-	}()
-	_ = wspulse.WithSendBufferSize(0)
+	require.Panics(t, func() {
+		_ = wspulse.WithSendBufferSize(0)
+	})
 }
 
 func TestWithSendBufferSize_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for buffer size > 4096")
-		}
-	}()
-	_ = wspulse.WithSendBufferSize(4097)
+	require.Panics(t, func() {
+		_ = wspulse.WithSendBufferSize(4097)
+	})
 }
 
 func TestWithCheckOrigin_Nil_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil CheckOrigin")
-		}
-	}()
-	_ = wspulse.WithCheckOrigin(nil)
+	require.Panics(t, func() {
+		_ = wspulse.WithCheckOrigin(nil)
+	})
 }
 
 func TestWithResumeWindow_Negative_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for negative resume window")
-		}
-	}()
-	_ = wspulse.WithResumeWindow(-time.Second)
+	require.Panics(t, func() {
+		_ = wspulse.WithResumeWindow(-time.Second)
+	})
 }
 
 func TestWithResumeWindow_LargeValue_Accepted(t *testing.T) {
@@ -266,9 +220,7 @@ func TestServer_Broadcast_EmptyRoom_NoError(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Broadcast("nonexistent-room", wspulse.Frame{Event: "msg"})
-	if err != nil {
-		t.Fatalf("expected no error for empty room, got %v", err)
-	}
+	require.NoError(t, err)
 }
 
 // ── Kick and Broadcast during server shutdown ─────────────────────────────────
@@ -277,9 +229,7 @@ func TestServer_Kick_AfterClose_ReturnsErrServerClosed(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewServer(acceptAll)
 	srv.Close()
-	if err := srv.Kick("any"); !errors.Is(err, wspulse.ErrServerClosed) {
-		t.Fatalf("want ErrServerClosed, got %v", err)
-	}
+	require.ErrorIs(t, srv.Kick("any"), wspulse.ErrServerClosed)
 }
 
 // ── Send/Kick during hub close (both ErrServerClosed paths) ──────────────────
@@ -290,9 +240,7 @@ func TestServer_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 	srv.Close()
 	// After close, hub maps are empty — returns ErrConnectionNotFound.
 	err := srv.Send("any", wspulse.Frame{Event: "x"})
-	if !errors.Is(err, wspulse.ErrConnectionNotFound) {
-		t.Fatalf("want ErrConnectionNotFound, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
 // TestServer_Broadcast_AfterClose verifies Broadcast returns ErrServerClosed
@@ -302,9 +250,7 @@ func TestServer_Broadcast_AfterClose(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	srv.Close()
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "hello"})
-	if !errors.Is(err, wspulse.ErrServerClosed) {
-		t.Fatalf("want ErrServerClosed, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrServerClosed)
 }
 
 // TestServer_Kick_AfterClose verifies Kick returns ErrServerClosed
@@ -314,9 +260,7 @@ func TestServer_Kick_AfterClose(t *testing.T) {
 	srv := wspulse.NewServer(acceptAll)
 	srv.Close()
 	err := srv.Kick("test-connection")
-	if !errors.Is(err, wspulse.ErrServerClosed) {
-		t.Fatalf("want ErrServerClosed, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrServerClosed)
 }
 
 func TestWithOnTransportDrop_AcceptsNil(t *testing.T) {
@@ -337,22 +281,16 @@ func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
 
 func TestWithUpgraderBufferSize_Zero_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for zero readSize")
-		}
-	}()
-	wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
+	require.Panics(t, func() {
+		wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
+	})
 }
 
 func TestWithUpgraderBufferSize_NegativeWriteSize_Panics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for negative writeSize")
-		}
-	}()
-	wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
+	require.Panics(t, func() {
+		wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
+	})
 }
 
 func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
@@ -375,20 +313,13 @@ func TestServer_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	resp, err := http.Get(ts.URL)
-	if err != nil {
-		t.Fatalf("GET failed: %v", err)
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close() //nolint:errcheck
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("want 401, got %d", resp.StatusCode)
-	}
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("ReadAll failed: %v", err)
-	}
-	if got := strings.TrimSpace(string(body)); got != "unauthorized" {
-		t.Errorf("response body = %q, want %q (internal error must not leak)", got, "unauthorized")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "unauthorized", strings.TrimSpace(string(body)),
+		"internal error must not leak")
 }
 
 func TestMain(m *testing.M) {

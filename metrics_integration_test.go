@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	wspulse "github.com/wspulse/server"
 )
@@ -72,48 +74,34 @@ func TestIntegration_MetricsCollector_ConnectionLifecycle(t *testing.T) {
 
 	// Open connection.
 	c, resp, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err, "Dial")
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
-	if n := rec.countByName("RoomCreated"); n != 1 {
-		t.Errorf("RoomCreated: want 1, got %d", n)
-	}
-	if n := rec.countByName("ConnectionOpened"); n != 1 {
-		t.Errorf("ConnectionOpened: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("RoomCreated"), "RoomCreated")
+	assert.Equal(t, 1, rec.countByName("ConnectionOpened"), "ConnectionOpened")
 
 	// Close connection.
 	_ = c.Close()
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect")
+		require.Fail(t, "timed out waiting for disconnect")
 	}
 
-	if n := rec.countByName("ConnectionClosed"); n != 1 {
-		t.Errorf("ConnectionClosed: want 1, got %d", n)
-	}
-	if n := rec.countByName("RoomDestroyed"); n != 1 {
-		t.Errorf("RoomDestroyed: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("ConnectionClosed"), "ConnectionClosed")
+	assert.Equal(t, 1, rec.countByName("RoomDestroyed"), "RoomDestroyed")
 
 	// Verify ConnectionClosed has non-negative duration and normal reason.
 	for _, e := range rec.eventsByName("ConnectionClosed") {
-		if e.duration < 0 {
-			t.Errorf("ConnectionClosed duration should be >= 0, got %v", e.duration)
-		}
-		if e.reason != wspulse.DisconnectNormal {
-			t.Errorf("ConnectionClosed reason = %q, want %q", e.reason, wspulse.DisconnectNormal)
-		}
+		assert.GreaterOrEqual(t, e.duration, time.Duration(0), "ConnectionClosed duration should be >= 0")
+		assert.Equal(t, wspulse.DisconnectNormal, e.reason, "ConnectionClosed reason")
 	}
 }
 
@@ -150,16 +138,12 @@ func TestIntegration_MetricsCollector_MessageFlow(t *testing.T) {
 
 	// Open 2 connections.
 	c1, resp1, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial c1: %v", err)
-	}
+	require.NoError(t, err, "Dial c1")
 	if resp1 != nil && resp1.Body != nil {
 		resp1.Body.Close()
 	}
 	c2, resp2, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial c2: %v", err)
-	}
+	require.NoError(t, err, "Dial c2")
 	if resp2 != nil && resp2.Body != nil {
 		resp2.Body.Close()
 	}
@@ -169,20 +153,19 @@ func TestIntegration_MetricsCollector_MessageFlow(t *testing.T) {
 		select {
 		case <-connected:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("timed out waiting for connection %d", i+1)
+			require.Failf(t, "timed out waiting for connection", "connection %d", i+1)
 		}
 	}
 
 	// Send a message from c1.
-	if err := c1.WriteMessage(websocket.TextMessage, []byte(`{"event":"test"}`)); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	err = c1.WriteMessage(websocket.TextMessage, []byte(`{"event":"test"}`))
+	require.NoError(t, err, "write")
 
 	// Wait for broadcast to complete.
 	select {
 	case <-broadcastDone:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for broadcast")
+		require.Fail(t, "timed out waiting for broadcast")
 	}
 
 	// Read broadcast on both clients to ensure writePump sent them (MessageSent fires).
@@ -201,18 +184,15 @@ func TestIntegration_MetricsCollector_MessageFlow(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out: MessageSent=%d (want 2), SendBufferUtilization=%d (want 2)",
+			require.Failf(t, "timed out waiting for metrics",
+				"MessageSent=%d (want 2), SendBufferUtilization=%d (want 2)",
 				rec.countByName("MessageSent"), rec.countByName("SendBufferUtilization"))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	if n := rec.countByName("MessageReceived"); n != 1 {
-		t.Errorf("MessageReceived: want 1, got %d", n)
-	}
-	if n := rec.countByName("MessageBroadcast"); n != 1 {
-		t.Errorf("MessageBroadcast: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("MessageReceived"), "MessageReceived")
+	assert.Equal(t, 1, rec.countByName("MessageBroadcast"), "MessageBroadcast")
 }
 
 func TestIntegration_MetricsCollector_ResumeAttempt(t *testing.T) {
@@ -248,35 +228,29 @@ func TestIntegration_MetricsCollector_ResumeAttempt(t *testing.T) {
 
 	// Initial connection.
 	c1, resp1, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err, "Dial")
 	if resp1 != nil && resp1.Body != nil {
 		resp1.Body.Close()
 	}
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
-	if n := rec.countByName("ConnectionOpened"); n != 1 {
-		t.Errorf("ConnectionOpened: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("ConnectionOpened"), "ConnectionOpened")
 
 	// Drop transport.
 	_ = c1.Close()
 	select {
 	case <-transportDrop:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	// Reconnect with same ID → resume.
 	c2, resp2, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Reconnect Dial: %v", err)
-	}
+	require.NoError(t, err, "Reconnect Dial")
 	if resp2 != nil && resp2.Body != nil {
 		resp2.Body.Close()
 	}
@@ -285,16 +259,12 @@ func TestIntegration_MetricsCollector_ResumeAttempt(t *testing.T) {
 	select {
 	case <-transportRestore:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport restore")
+		require.Fail(t, "timed out waiting for transport restore")
 	}
 
-	if n := rec.countByName("ResumeAttempt"); n != 1 {
-		t.Errorf("ResumeAttempt: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("ResumeAttempt"), "ResumeAttempt")
 	// Should NOT fire a second ConnectionOpened (session was resumed, not recreated).
-	if n := rec.countByName("ConnectionOpened"); n != 1 {
-		t.Errorf("ConnectionOpened after resume: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("ConnectionOpened"), "ConnectionOpened after resume")
 
 }
 
@@ -321,9 +291,7 @@ func TestIntegration_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, resp, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err, "Dial")
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
@@ -333,7 +301,7 @@ func TestIntegration_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
 	select {
 	case conn = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Rapid-fire send to trigger at least one buffer-full drop.
@@ -347,13 +315,9 @@ func TestIntegration_MetricsCollector_FrameDropped_SendFull(t *testing.T) {
 			break
 		}
 	}
-	if !gotBufferFull {
-		t.Fatal("expected at least one ErrSendBufferFull in 200 rapid sends")
-	}
+	require.True(t, gotBufferFull, "expected at least one ErrSendBufferFull in 200 rapid sends")
 
-	if n := rec.countByName("FrameDropped"); n < 1 {
-		t.Errorf("FrameDropped: want >= 1, got %d", n)
-	}
+	assert.GreaterOrEqual(t, rec.countByName("FrameDropped"), 1, "FrameDropped")
 }
 
 func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
@@ -390,9 +354,7 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, resp, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err, "Dial")
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
@@ -401,7 +363,7 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the WebSocket to suspend the session. With ResumeWindow,
@@ -412,7 +374,7 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 	select {
 	case <-transportDropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	frame := wspulse.Frame{Event: "fill", Payload: []byte(`{}`)}
@@ -428,7 +390,8 @@ func TestIntegration_MetricsCollector_FrameDropped_BroadcastDropOldest(t *testin
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for FrameDropped, got %d", rec.countByName("FrameDropped"))
+			require.Failf(t, "timed out waiting for FrameDropped",
+				"got %d", rec.countByName("FrameDropped"))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -462,9 +425,7 @@ func TestIntegration_MetricsCollector_PongTimeout(t *testing.T) {
 	// Use a raw dialer that does NOT respond to pings.
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, resp, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
+	require.NoError(t, err, "Dial")
 	if resp != nil && resp.Body != nil {
 		resp.Body.Close()
 	}
@@ -484,13 +445,11 @@ func TestIntegration_MetricsCollector_PongTimeout(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for pong timeout disconnect")
+		require.Fail(t, "timed out waiting for pong timeout disconnect")
 	}
 	_ = c.Close()
 
-	if n := rec.countByName("PongTimeout"); n != 1 {
-		t.Errorf("PongTimeout: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("PongTimeout"), "PongTimeout")
 }
 
 func TestIntegration_MetricsCollector_Shutdown(t *testing.T) {
@@ -514,16 +473,12 @@ func TestIntegration_MetricsCollector_Shutdown(t *testing.T) {
 
 	// Open 2 connections.
 	c1, resp1, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial c1: %v", err)
-	}
+	require.NoError(t, err, "Dial c1")
 	if resp1 != nil && resp1.Body != nil {
 		resp1.Body.Close()
 	}
 	c2, resp2, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Dial c2: %v", err)
-	}
+	require.NoError(t, err, "Dial c2")
 	if resp2 != nil && resp2.Body != nil {
 		resp2.Body.Close()
 	}
@@ -533,7 +488,7 @@ func TestIntegration_MetricsCollector_Shutdown(t *testing.T) {
 		select {
 		case <-connected:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("timed out waiting for connection %d", i+1)
+			require.Failf(t, "timed out waiting for connection", "connection %d", i+1)
 		}
 	}
 
@@ -542,17 +497,11 @@ func TestIntegration_MetricsCollector_Shutdown(t *testing.T) {
 
 	// Verify ConnectionClosed fired for both connections with server_close reason.
 	closedEvents := rec.eventsByName("ConnectionClosed")
-	if len(closedEvents) != 2 {
-		t.Fatalf("ConnectionClosed: want 2, got %d", len(closedEvents))
-	}
+	require.Len(t, closedEvents, 2, "ConnectionClosed")
 	for _, e := range closedEvents {
-		if e.reason != wspulse.DisconnectServerClose {
-			t.Errorf("ConnectionClosed reason = %q, want %q", e.reason, wspulse.DisconnectServerClose)
-		}
+		assert.Equal(t, wspulse.DisconnectServerClose, e.reason, "ConnectionClosed reason")
 	}
 
 	// Verify RoomDestroyed fired.
-	if n := rec.countByName("RoomDestroyed"); n != 1 {
-		t.Errorf("RoomDestroyed: want 1, got %d", n)
-	}
+	assert.Equal(t, 1, rec.countByName("RoomDestroyed"), "RoomDestroyed")
 }

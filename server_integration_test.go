@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	wspulse "github.com/wspulse/server"
 )
@@ -26,9 +28,7 @@ func dialTestServer(t *testing.T, srv wspulse.Server) *websocket.Conn {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
@@ -42,9 +42,7 @@ func dialTestServerRaw(t *testing.T, srv wspulse.Server) (*websocket.Conn, *http
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 	t.Cleanup(func() { _ = c.Close() })
 	return c, ts
 }
@@ -167,20 +165,12 @@ func TestServer_ConnectFunc_RejectReturns401(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	resp, err := http.Get(ts.URL)
-	if err != nil {
-		t.Fatalf("GET failed: %v", err)
-	}
+	require.NoError(t, err, "GET failed")
 	defer resp.Body.Close() //nolint:errcheck
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("want 401, got %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("ReadAll failed: %v", err)
-	}
-	if got := strings.TrimSpace(string(body)); got != "unauthorized" {
-		t.Errorf("response body = %q, want %q (internal error must not leak)", got, "unauthorized")
-	}
+	require.NoError(t, err, "ReadAll failed")
+	assert.Equal(t, "unauthorized", strings.TrimSpace(string(body)), "internal error must not leak")
 }
 
 func TestServer_OnConnect_SendsFrame(t *testing.T) {
@@ -195,16 +185,10 @@ func TestServer_OnConnect_SendsFrame(t *testing.T) {
 	c := dialTestServer(t, srv)
 	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, err := wspulse.JSONCodec.Decode(message)
-	if err != nil {
-		t.Fatalf("Decode failed: %v", err)
-	}
-	if f.Event != "welcome" {
-		t.Errorf("Event: want %q, got %q", "welcome", f.Event)
-	}
+	require.NoError(t, err, "Decode failed")
+	assert.Equal(t, "welcome", f.Event)
 }
 
 func TestServer_OnMessage_CallbackFires(t *testing.T) {
@@ -220,19 +204,13 @@ func TestServer_OnMessage_CallbackFires(t *testing.T) {
 	c := dialTestServer(t, srv)
 	payload := []byte(`{"text":"ping from client"}`)
 	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: payload})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
-	if err := c.WriteMessage(websocket.TextMessage, encoded); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, encoded), "WriteMessage failed")
 	select {
 	case f := <-received:
-		if f.Event != "msg" {
-			t.Errorf("Event: want %q, got %q", "msg", f.Event)
-		}
+		assert.Equal(t, "msg", f.Event)
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnMessage callback")
+		require.Fail(t, "timed out waiting for OnMessage callback")
 	}
 }
 
@@ -253,24 +231,16 @@ func TestServer_Broadcast_ReachesConnectedClient(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	frame := wspulse.Frame{Event: "notice", Payload: []byte(`"hello room"`)}
-	if err := srv.Broadcast("test-room", frame); err != nil {
-		t.Fatalf("Broadcast failed: %v", err)
-	}
+	require.NoError(t, srv.Broadcast("test-room", frame), "Broadcast failed")
 	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, err := wspulse.JSONCodec.Decode(message)
-	if err != nil {
-		t.Fatalf("Decode failed: %v", err)
-	}
-	if f.Event != "notice" {
-		t.Errorf("Event: want %q, got %q", "notice", f.Event)
-	}
+	require.NoError(t, err, "Decode failed")
+	assert.Equal(t, "notice", f.Event)
 }
 
 func TestServer_OnDisconnect_CallbackFires(t *testing.T) {
@@ -289,16 +259,14 @@ func TestServer_OnDisconnect_CallbackFires(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 	_ = c.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "bye"))
 	_ = c.Close()
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect callback")
+		require.Fail(t, "timed out waiting for OnDisconnect callback")
 	}
 }
 
@@ -319,24 +287,16 @@ func TestServer_Send_DeliversFrameToConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	frame := wspulse.Frame{Event: "direct", Payload: []byte(`"hi"`)}
-	if err := srv.Send("test-connection", frame); err != nil {
-		t.Fatalf("Send failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", frame), "Send failed")
 	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, err := wspulse.JSONCodec.Decode(message)
-	if err != nil {
-		t.Fatalf("Decode failed: %v", err)
-	}
-	if f.Event != "direct" {
-		t.Errorf("Event: want %q, got %q", "direct", f.Event)
-	}
+	require.NoError(t, err, "Decode failed")
+	assert.Equal(t, "direct", f.Event)
 }
 
 func TestServer_Kick_ClosesConnection(t *testing.T) {
@@ -361,15 +321,13 @@ func TestServer_Kick_ClosesConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
-	if err := srv.Kick("test-connection"); err != nil {
-		t.Fatalf("Kick failed: %v", err)
-	}
+	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnection after Kick")
+		require.Fail(t, "timed out waiting for disconnection after Kick")
 	}
 }
 
@@ -390,18 +348,12 @@ func TestServer_GetConnections_ReturnsRegisteredConnection(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection to register")
+		require.Fail(t, "timed out waiting for connection to register")
 	}
 	connections := srv.GetConnections("test-room")
-	if len(connections) != 1 {
-		t.Fatalf("want 1 connection in test-room, got %d", len(connections))
-	}
-	if connections[0].ID() != "test-connection" {
-		t.Errorf("connection ID: want %q, got %q", "test-connection", connections[0].ID())
-	}
-	if connections[0].RoomID() != "test-room" {
-		t.Errorf("connection RoomID: want %q, got %q", "test-room", connections[0].RoomID())
-	}
+	require.Len(t, connections, 1)
+	assert.Equal(t, "test-connection", connections[0].ID())
+	assert.Equal(t, "test-room", connections[0].RoomID())
 }
 
 func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
@@ -443,7 +395,7 @@ func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	select {
 	case <-firstConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connection")
+		require.Fail(t, "timed out waiting for first connection")
 	}
 
 	// Establish second connection with the same connectionID — first must be kicked.
@@ -451,40 +403,30 @@ func TestServer_DuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	select {
 	case <-kicked:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for ErrDuplicateConnectionID kick")
+		require.Fail(t, "timed out waiting for ErrDuplicateConnectionID kick")
 	}
 	select {
 	case <-secondConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second connection to be registered")
+		require.Fail(t, "timed out waiting for second connection to be registered")
 	}
 
 	// Round-trip a frame to prove the hub has processed all events
 	// (kick, register, any deferred cleanup) before checking counts.
 	frame := wspulse.Frame{Event: "ok", Payload: []byte(`"after-kick"`)}
-	if err := srv.Send("test-connection", frame); err != nil {
-		t.Fatalf("Send to second connection failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", frame), "Send to second connection failed")
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage on second connection failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage on second connection failed")
 	f, err := wspulse.JSONCodec.Decode(message)
-	if err != nil {
-		t.Fatalf("Decode failed: %v", err)
-	}
-	if f.Event != "ok" {
-		t.Errorf("Event: want %q, got %q", "ok", f.Event)
-	}
+	require.NoError(t, err, "Decode failed")
+	assert.Equal(t, "ok", f.Event)
 
 	// After round-trip, verify onDisconnect was called exactly once.
 	mu.Lock()
 	dc := disconnectCount
 	mu.Unlock()
-	if dc != 1 {
-		t.Errorf("onDisconnect called %d times for kicked connection, want exactly 1", dc)
-	}
+	assert.Equal(t, 1, dc, "onDisconnect called wrong number of times for kicked connection")
 }
 
 // ── Race & backpressure tests ─────────────────────────────────────────────────
@@ -513,7 +455,7 @@ func TestServer_ConcurrentBroadcast_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection")
+		require.Fail(t, "timed out waiting for connection")
 	}
 
 	var wg sync.WaitGroup
@@ -602,7 +544,7 @@ func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connection")
+		require.Fail(t, "timed out waiting for connection")
 	}
 
 	for i := 0; i < totalBroadcasts; i++ {
@@ -621,22 +563,16 @@ func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
 	for {
 		_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
 		_, message, err := c.ReadMessage()
-		if err != nil {
-			t.Fatalf("ReadMessage failed before sentinel: %v", err)
-		}
+		require.NoError(t, err, "ReadMessage failed before sentinel")
 		f, decodeErr := wspulse.JSONCodec.Decode(message)
-		if decodeErr != nil {
-			t.Fatalf("Decode failed: %v", decodeErr)
-		}
+		require.NoError(t, decodeErr, "Decode failed")
 		if f.Event == "done" {
 			break
 		}
 		frames = append(frames, f)
 	}
 
-	if len(frames) == 0 {
-		t.Fatal("expected at least one frame, got none")
-	}
+	require.NotEmpty(t, frames, "expected at least one frame")
 
 	found := false
 	for _, f := range frames {
@@ -645,9 +581,7 @@ func TestServer_BroadcastDropsOldest_SlowClient(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Errorf("newest frame not found among %d received frames; drop-oldest policy did not preserve it", len(frames))
-	}
+	assert.True(t, found, "newest frame not found among %d received frames; drop-oldest policy did not preserve it", len(frames))
 }
 
 func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
@@ -699,16 +633,14 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	for i := 0; i < connectionCount; i++ {
 		c, _, err := websocket.DefaultDialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("Dial %d failed: %v", i, err)
-		}
+		require.NoError(t, err, "Dial %d failed", i)
 		defer c.Close() //nolint:errcheck
 	}
 
 	select {
 	case <-allConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for all connections to register")
+		require.Fail(t, "timed out waiting for all connections to register")
 	}
 	srv.Close()
 
@@ -716,16 +648,15 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 	case <-allDone:
 	case <-time.After(3 * time.Second):
 		mu.Lock()
-		t.Fatalf("timed out: only %d/%d OnDisconnect callbacks fired", len(disconnected), connectionCount)
+		n := len(disconnected)
 		mu.Unlock()
+		require.Failf(t, "timed out", "only %d/%d OnDisconnect callbacks fired", n, connectionCount)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
 	for id, err := range disconnected {
-		if !errors.Is(err, wspulse.ErrServerClosed) {
-			t.Errorf("connection %s: got err=%v, want ErrServerClosed", id, err)
-		}
+		assert.ErrorIs(t, err, wspulse.ErrServerClosed, "connection %s", id)
 	}
 }
 
@@ -748,15 +679,13 @@ func TestServer_ReadPumpPanicRecovery(t *testing.T) {
 	c := dialTestServer(t, srv)
 
 	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
 	_ = c.WriteMessage(websocket.TextMessage, data)
 
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after panic")
+		require.Fail(t, "timed out waiting for OnDisconnect after panic")
 	}
 }
 
@@ -779,31 +708,18 @@ func TestServer_ReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	c := dialTestServer(t, srv)
 
 	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
-	if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, data), "WriteMessage failed")
 
 	select {
 	case got := <-disconnectErr:
 		var pe *wspulse.PanicError
-		if !errors.As(got, &pe) {
-			t.Fatalf("expected PanicError, got %T: %v", got, got)
-		}
-		if pe.Value != "typed-boom" {
-			t.Fatalf("PanicError.Value = %v, want %q", pe.Value, "typed-boom")
-		}
-		if len(pe.Stack) == 0 {
-			t.Fatal("PanicError.Stack is empty, expected goroutine stack trace")
-		}
-		want := "wspulse: onMessage panic: typed-boom"
-		if pe.Error() != want {
-			t.Fatalf("PanicError.Error() = %q, want %q", pe.Error(), want)
-		}
+		require.ErrorAs(t, got, &pe)
+		require.Equal(t, "typed-boom", pe.Value)
+		require.NotEmpty(t, pe.Stack, "PanicError.Stack is empty, expected goroutine stack trace")
+		require.Equal(t, "wspulse: onMessage panic: typed-boom", pe.Error())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 }
 
@@ -825,14 +741,14 @@ func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T)
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	deadline := time.After(3 * time.Second)
 	for {
 		select {
 		case <-deadline:
-			t.Fatal("timed out: never saw ErrSendBufferFull")
+			require.Fail(t, "timed out: never saw ErrSendBufferFull")
 		default:
 		}
 		err := connection.Send(wspulse.Frame{Event: "flood"})
@@ -840,11 +756,9 @@ func TestServer_ConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T)
 			return // success
 		}
 		if errors.Is(err, wspulse.ErrConnectionClosed) {
-			t.Fatal("connection closed before buffer-full was observed")
+			require.Fail(t, "connection closed before buffer-full was observed")
 		}
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 	}
 }
 
@@ -865,7 +779,7 @@ func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = srv.Kick(connection.ID())
@@ -873,7 +787,7 @@ func TestServer_ConnectionDone_ClosedOnKick(t *testing.T) {
 	select {
 	case <-connection.Done():
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for Connection.Done()")
+		require.Fail(t, "timed out waiting for Connection.Done()")
 	}
 }
 
@@ -906,15 +820,11 @@ func TestServer_MultipleRooms_BroadcastIsolation(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 
 	cA, _, err := websocket.DefaultDialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial A failed: %v", err)
-	}
+	require.NoError(t, err, "Dial A failed")
 	t.Cleanup(func() { _ = cA.Close() })
 
 	cB, _, err := websocket.DefaultDialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial B failed: %v", err)
-	}
+	require.NoError(t, err, "Dial B failed")
 	t.Cleanup(func() { _ = cB.Close() })
 
 	// Wait for both connections to be registered by the hub.
@@ -922,25 +832,19 @@ func TestServer_MultipleRooms_BroadcastIsolation(t *testing.T) {
 		select {
 		case <-connected:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("timed out waiting for connection %d", i+1)
+			require.Failf(t, "timed out", "waiting for connection %d", i+1)
 		}
 	}
 
-	if err := srv.Broadcast("room-a", wspulse.Frame{Event: "hello"}); err != nil {
-		t.Fatalf("Broadcast failed: %v", err)
-	}
+	require.NoError(t, srv.Broadcast("room-a", wspulse.Frame{Event: "hello"}), "Broadcast failed")
 
 	_ = cA.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, _, errA := cA.ReadMessage()
-	if errA != nil {
-		t.Fatalf("room-a client didn't receive frame: %v", errA)
-	}
+	require.NoError(t, errA, "room-a client didn't receive frame")
 
 	_ = cB.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 	_, _, errB := cB.ReadMessage()
-	if errB == nil {
-		t.Fatal("room-b client received a frame intended for room-a")
-	}
+	require.Error(t, errB, "room-b client received a frame intended for room-a")
 }
 
 func TestServer_GetConnections_EmptyAfterDisconnect(t *testing.T) {
@@ -965,14 +869,12 @@ func TestServer_GetConnections_EmptyAfterDisconnect(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect")
+		require.Fail(t, "timed out waiting for disconnect")
 	}
 
 	time.Sleep(50 * time.Millisecond)
 	connections := srv.GetConnections("test-room")
-	if len(connections) != 0 {
-		t.Fatalf("want 0 connections after disconnect, got %d", len(connections))
-	}
+	require.Len(t, connections, 0)
 }
 
 func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
@@ -1016,53 +918,45 @@ func TestServer_Resume_ReconnectWithinWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired during resume window — should not happen")
+		require.Fail(t, "OnDisconnect fired during resume window — should not happen")
 	default:
 	}
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport restore")
+		require.Fail(t, "timed out waiting for transport restore")
 	}
 
 	frame := wspulse.Frame{Event: "after-resume", Payload: []byte(`"ok"`)}
-	if err := srv.Send("test-connection", frame); err != nil {
-		t.Fatalf("Send after resume failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", frame), "Send after resume failed")
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage on resumed connection failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage on resumed connection failed")
 	f, _ := wspulse.JSONCodec.Decode(message)
-	if f.Event != "after-resume" {
-		t.Errorf("Event: want %q, got %q", "after-resume", f.Event)
-	}
+	assert.Equal(t, "after-resume", f.Event)
 
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired after successful resume")
+		require.Fail(t, "OnDisconnect fired after successful resume")
 	default:
 	}
 }
@@ -1103,7 +997,7 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -1111,20 +1005,18 @@ func TestServer_Resume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Verify the grace timer was registered with the correct duration.
-	if got := fc.Duration(0); got != 3*time.Minute {
-		t.Fatalf("grace timer duration: want %v, got %v", 3*time.Minute, got)
-	}
+	require.Equal(t, 3*time.Minute, fc.Duration(0), "grace timer duration")
 
 	fc.Fire(0)
 
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after grace expiry")
+		require.Fail(t, "timed out waiting for OnDisconnect after grace expiry")
 	}
 }
 
@@ -1155,14 +1047,14 @@ func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	for i := 0; i < 3; i++ {
@@ -1175,29 +1067,21 @@ func TestServer_Resume_BufferedFramesDelivered(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	var frames []wspulse.Frame
 	for i := 0; i < 3; i++ {
 		_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 		_, message, err := c2.ReadMessage()
-		if err != nil {
-			t.Fatalf("ReadMessage %d failed: %v", i, err)
-		}
+		require.NoError(t, err, "ReadMessage %d failed", i)
 		f, _ := wspulse.JSONCodec.Decode(message)
 		frames = append(frames, f)
 	}
 
-	if len(frames) != 3 {
-		t.Fatalf("want 3 buffered frames, got %d", len(frames))
-	}
+	require.Len(t, frames, 3)
 	for _, f := range frames {
-		if f.Event != "buffered" {
-			t.Errorf("Event: want %q, got %q", "buffered", f.Event)
-		}
+		assert.Equal(t, "buffered", f.Event)
 	}
 }
 
@@ -1228,17 +1112,15 @@ func TestServer_Resume_KickBypassesWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
-	if err := srv.Kick("test-connection"); err != nil {
-		t.Fatalf("Kick failed: %v", err)
-	}
+	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
 
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect after Kick (should bypass resume window)")
+		require.Fail(t, "timed out waiting for OnDisconnect after Kick (should bypass resume window)")
 	}
 }
 
@@ -1269,7 +1151,7 @@ func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -1277,7 +1159,7 @@ func TestServer_Resume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect (no resume window)")
+		require.Fail(t, "timed out waiting for OnDisconnect (no resume window)")
 	}
 }
 
@@ -1314,14 +1196,14 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	srv.Close()
@@ -1329,7 +1211,7 @@ func TestServer_Resume_ServerCloseTerminatesSuspended(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect from Server.Close on suspended session")
+		require.Fail(t, "timed out waiting for OnDisconnect from Server.Close on suspended session")
 	}
 }
 
@@ -1360,14 +1242,14 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	_ = srv.Broadcast("test-room", wspulse.Frame{Event: "bcast", Payload: []byte(`"suspended"`)})
@@ -1375,20 +1257,14 @@ func TestServer_Resume_BroadcastWhileSuspended(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, _ := wspulse.JSONCodec.Decode(message)
-	if f.Event != "bcast" {
-		t.Errorf("Event: want %q, got %q", "bcast", f.Event)
-	}
+	assert.Equal(t, "bcast", f.Event)
 }
 
 // ── Race condition tests for resume ───────────────────────────────────────────
@@ -1439,27 +1315,25 @@ func TestServer_Resume_ConcurrentReconnect_NoRace(t *testing.T) {
 			select {
 			case <-connected:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for connect", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for connect", i)
 			}
 		} else {
 			select {
 			case <-restored:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for transport restore", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for transport restore", i)
 			}
 		}
 		_ = c.Close()
 		select {
 		case <-dropped:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("cycle %d: timed out waiting for transport drop", i)
+			require.Failf(t, "timed out", "cycle %d: waiting for transport drop", i)
 		}
 		successCount++
 	}
 
-	if successCount == 0 {
-		t.Fatal("all 10 dial attempts failed — test exercised nothing")
-	}
+	require.NotZero(t, successCount, "all 10 dial attempts failed — test exercised nothing")
 }
 
 func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
@@ -1491,13 +1365,11 @@ func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 
 	dialer := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Start concurrent broadcasts, then close the transport to trigger
@@ -1518,7 +1390,7 @@ func TestServer_Resume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	// Reconnect while broadcasts are still in flight.
@@ -1541,9 +1413,7 @@ func TestWithCheckOrigin_RejectsConnection(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
 	_, _, err := dialer.Dial(u, nil)
-	if err == nil {
-		t.Fatal("expected dial to fail when origin is rejected")
-	}
+	require.Error(t, err, "expected dial to fail when origin is rejected")
 }
 
 // ── ServeHTTP edge case tests ─────────────────────────────────────────────────
@@ -1557,13 +1427,9 @@ func TestServer_ServeHTTP_AfterClose_Returns503(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	resp, err := http.Get(ts.URL)
-	if err != nil {
-		t.Fatalf("GET failed: %v", err)
-	}
+	require.NoError(t, err, "GET failed")
 	defer resp.Body.Close() //nolint:errcheck
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("want 503, got %d", resp.StatusCode)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 }
 
 func TestServer_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
@@ -1582,11 +1448,9 @@ func TestServer_ServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 
 	select {
 	case c := <-connected:
-		if c.ID() == "" {
-			t.Error("expected non-empty auto-generated connectionID")
-		}
+		assert.NotEmpty(t, c.ID(), "expected non-empty auto-generated connectionID")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 }
 
@@ -1608,16 +1472,14 @@ func TestServer_ConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = srv.Kick(connection.ID())
 	<-connection.Done()
 
 	err := connection.Send(wspulse.Frame{Event: "nope"})
-	if !errors.Is(err, wspulse.ErrConnectionClosed) {
-		t.Fatalf("want ErrConnectionClosed, got %v", err)
-	}
+	require.ErrorIs(t, err, wspulse.ErrConnectionClosed)
 }
 
 // ── Broadcast edge case tests ─────────────────────────────────────────────────
@@ -1640,7 +1502,7 @@ func TestServer_Broadcast_SkipsClosedSession(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out")
+		require.Fail(t, "timed out")
 	}
 
 	_ = srv.Kick("test-connection")
@@ -1664,25 +1526,17 @@ func TestServer_ReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	c := dialTestServer(t, srv)
 
 	// Send malformed JSON (not a valid Frame).
-	if err := c.WriteMessage(websocket.TextMessage, []byte("not json")); err != nil {
-		t.Fatalf("WriteMessage (malformed) failed: %v", err)
-	}
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, []byte("not json")), "WriteMessage (malformed) failed")
 	// Send a valid frame after the malformed one — readPump should continue.
 	validData, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
-	if err := c.WriteMessage(websocket.TextMessage, validData); err != nil {
-		t.Fatalf("WriteMessage (valid) failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, validData), "WriteMessage (valid) failed")
 
 	select {
 	case f := <-received:
-		if f.Event != "valid" {
-			t.Errorf("Event: want %q, got %q", "valid", f.Event)
-		}
+		assert.Equal(t, "valid", f.Event)
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for valid frame after malformed one")
+		require.Fail(t, "timed out waiting for valid frame after malformed one")
 	}
 }
 
@@ -1726,7 +1580,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Close transport and fire the grace timer.
@@ -1734,7 +1588,7 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	fc.Fire(0)
@@ -1742,37 +1596,29 @@ func TestServer_Resume_StaleClosedSession_Reconnect(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for grace expiry disconnect")
+		require.Fail(t, "timed out waiting for grace expiry disconnect")
 	}
 
 	// Reconnect with the same connectionID — hits stateClosed branch.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for reconnect after stale session cleanup")
+		require.Fail(t, "timed out waiting for reconnect after stale session cleanup")
 	}
 
 	// Verify the new connection works.
-	if err := srv.Send("test-connection", wspulse.Frame{Event: "alive"}); err != nil {
-		t.Fatalf("Send failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}), "Send failed")
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, _ := wspulse.JSONCodec.Decode(message)
-	if f.Event != "alive" {
-		t.Errorf("Event: want %q, got %q", "alive", f.Event)
-	}
+	assert.Equal(t, "alive", f.Event)
 }
 
 // ── Server.Close() synchronous behavior ───────────────────────────────────────
@@ -1793,7 +1639,7 @@ func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close should block until hub goroutine is done.
@@ -1807,7 +1653,7 @@ func TestServer_Close_BlocksUntilHubExits(t *testing.T) {
 		// After Close returns, a second Close must return immediately.
 		srv.Close()
 	case <-time.After(5 * time.Second):
-		t.Fatal("Close() did not return within timeout")
+		require.Fail(t, "Close() did not return within timeout")
 	}
 }
 
@@ -1829,7 +1675,7 @@ func TestServer_ConcurrentCloseAndKick_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	var wg sync.WaitGroup
@@ -1863,7 +1709,7 @@ func TestServer_ConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	var wg sync.WaitGroup
@@ -1918,7 +1764,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the transport to trigger suspend.
@@ -1926,7 +1772,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport drop")
+		require.Fail(t, "timed out waiting for transport drop")
 	}
 
 	// Application calls Close() on the Connection while suspended.
@@ -1936,7 +1782,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended(t *testing.T) {
 	select {
 	case <-connection.Done():
 	case <-time.After(3 * time.Second):
-		t.Fatal("Done() not closed after Close()")
+		require.Fail(t, "Done() not closed after Close()")
 	}
 }
 
@@ -1978,29 +1824,27 @@ func TestServer_Resume_MultipleRapidCycles(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		c, _, err := dialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("cycle %d: dial failed: %v", i, err)
-		}
+		require.NoError(t, err, "cycle %d: dial failed", i)
 		if i == 0 {
 			// First dial is a fresh connection.
 			select {
 			case <-connected:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for connect", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for connect", i)
 			}
 		} else {
 			// Subsequent dials are resume reconnections.
 			select {
 			case <-restored:
 			case <-time.After(3 * time.Second):
-				t.Fatalf("cycle %d: timed out waiting for transport restore", i)
+				require.Failf(t, "timed out", "cycle %d: waiting for transport restore", i)
 			}
 		}
 		_ = c.Close()
 		select {
 		case <-dropped:
 		case <-time.After(3 * time.Second):
-			t.Fatalf("cycle %d: timed out waiting for transport drop", i)
+			require.Failf(t, "timed out", "cycle %d: waiting for transport drop", i)
 		}
 	}
 }
@@ -2023,13 +1867,11 @@ func TestServer_Broadcast_EncodeError_ReturnsError(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "fail"})
-	if err == nil {
-		t.Fatal("expected encode error from Broadcast")
-	}
+	require.Error(t, err, "expected encode error from Broadcast")
 }
 
 func TestServer_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
@@ -2049,13 +1891,11 @@ func TestServer_ConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	err := connection.Send(wspulse.Frame{Event: "fail"})
-	if err == nil {
-		t.Fatal("expected encode error from Send")
-	}
+	require.Error(t, err, "expected encode error from Send")
 }
 
 // ── Grace expired for already-closed session ─────────────────────────────────
@@ -2092,7 +1932,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close transport → session suspends.
@@ -2100,7 +1940,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Application calls Close() on the Connection while suspended.
@@ -2120,7 +1960,7 @@ func TestServer_Resume_GraceExpiresAfterConnectionClose(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("want 0 connections after grace expired, got %d", len(connections))
+			require.Failf(t, "want 0 connections after grace expired", "got %d", len(connections))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -2175,44 +2015,40 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first drop")
+		require.Fail(t, "timed out waiting for first drop")
 	}
 
 	// Cycle 2: reconnect (resume, epoch bumped), disconnect again. Timer 1 (epoch=2).
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect 1 failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect 1 failed")
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first restore")
+		require.Fail(t, "timed out waiting for first restore")
 	}
 	_ = c2.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second drop")
+		require.Fail(t, "timed out waiting for second drop")
 	}
 
 	// Cycle 3: reconnect again (resume, epoch bumped again).
 	c3, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect 2 failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect 2 failed")
 	t.Cleanup(func() { _ = c3.Close() })
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for second restore")
+		require.Fail(t, "timed out waiting for second restore")
 	}
 
 	// Fire old timers (epoch=1, epoch=2) — both should be detected as stale.
@@ -2224,18 +2060,15 @@ func TestServer_Resume_StaleGraceTimerIgnored(t *testing.T) {
 	// delivered it. By the time the frame arrives, enough processing
 	// has occurred that any incorrect grace-timer cleanup would have
 	// already removed the session (Send returns ErrConnectionNotFound).
-	if err := srv.Send("test-connection", wspulse.Frame{Event: "alive"}); err != nil {
-		t.Fatalf("Send after stale timers failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}), "Send after stale timers failed")
 	_ = c3.SetReadDeadline(time.Now().Add(3 * time.Second))
-	if _, _, err := c3.ReadMessage(); err != nil {
-		t.Fatalf("ReadMessage after stale timers failed: %v", err)
-	}
+	_, _, err = c3.ReadMessage()
+	require.NoError(t, err, "ReadMessage after stale timers failed")
 
 	// After round-trip, verify OnDisconnect was not fired.
 	select {
 	case <-disconnected:
-		t.Fatal("OnDisconnect fired — stale timer was not correctly ignored")
+		require.Fail(t, "OnDisconnect fired — stale timer was not correctly ignored")
 	default:
 	}
 }
@@ -2271,19 +2104,17 @@ func TestServer_Resume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
-	if err := srv.Kick("test-connection"); err != nil {
-		t.Fatalf("Kick failed: %v", err)
-	}
+	require.NoError(t, srv.Kick("test-connection"), "Kick failed")
 
 	// After kick, the transportDied message from readPump arrives with
 	// stateClosed. Wait for everything to settle.
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 	time.Sleep(200 * time.Millisecond) // let deferred cleanup finish
 }
@@ -2326,9 +2157,7 @@ func TestServer_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 	clients := make([]*websocket.Conn, 0, count)
 	for i := 0; i < count; i++ {
 		c, _, err := websocket.DefaultDialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("Dial %d failed: %v", i, err)
-		}
+		require.NoError(t, err, "Dial %d failed", i)
 		clients = append(clients, c)
 	}
 	defer func() {
@@ -2340,7 +2169,7 @@ func TestServer_HubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 	select {
 	case <-allConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for all connections")
+		require.Fail(t, "timed out waiting for all connections")
 	}
 
 	// Close the server — hub shuts down, readPumps should cleanup inline.
@@ -2381,7 +2210,7 @@ func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	select {
 	case <-firstConnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connection")
+		require.Fail(t, "timed out waiting for first connection")
 	}
 
 	// Second connection with same ID while first is still connected (not suspended).
@@ -2389,7 +2218,7 @@ func TestServer_Resume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	select {
 	case <-kicked:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for duplicate kick")
+		require.Fail(t, "timed out waiting for duplicate kick")
 	}
 }
 
@@ -2416,7 +2245,7 @@ func TestServer_PongHandler_ResetsReadDeadline(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Keep reading for long enough to receive at least one Ping+Pong cycle.
@@ -2449,9 +2278,7 @@ func TestServer_NormalCloseFrame_LogsNormally(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 
 	// Send a proper close frame and wait for the server to process it.
 	_ = c.WriteMessage(websocket.CloseMessage,
@@ -2464,7 +2291,7 @@ func TestServer_NormalCloseFrame_LogsNormally(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect")
+		require.Fail(t, "timed out waiting for disconnect")
 	}
 }
 
@@ -2493,16 +2320,14 @@ func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Send data before closing to ensure writePump is active.
 	_ = srv.Send("test-connection", wspulse.Frame{Event: "pre-suspend"})
 	_ = c1.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, _, err := c1.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 
 	// Close transport → session suspends, writePump gets pumpQuit.
 	_ = c1.Close()
@@ -2512,9 +2337,7 @@ func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect failed")
 	t.Cleanup(func() { _ = c2.Close() })
 	time.Sleep(200 * time.Millisecond)
 
@@ -2523,13 +2346,9 @@ func TestServer_Resume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	_ = srv.Send("test-connection", wspulse.Frame{Event: "post-resume"})
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, msg, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage on resumed connection failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage on resumed connection failed")
 	f, _ := wspulse.JSONCodec.Decode(msg)
-	if f.Event != "post-resume" {
-		t.Errorf("Event: want %q, got %q", "post-resume", f.Event)
-	}
+	assert.Equal(t, "post-resume", f.Event)
 }
 
 // ── No OnMessage callback: readPump should still process frames ──────────────
@@ -2542,12 +2361,8 @@ func TestServer_NoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 
 	// Send a frame — readPump should process without crash.
 	data, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
-	if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
+	require.NoError(t, c.WriteMessage(websocket.TextMessage, data), "WriteMessage failed")
 	time.Sleep(100 * time.Millisecond)
 }
 
@@ -2576,7 +2391,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Close transport → session suspends.
@@ -2586,9 +2401,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 	// Get the connection reference and call Close() on it → state = stateClosed
 	// but still registered in hub maps (grace timer hasn't fired).
 	connections := srv.GetConnections("test-room")
-	if len(connections) != 1 {
-		t.Fatalf("want 1 connection, got %d", len(connections))
-	}
+	require.Len(t, connections, 1)
 	_ = connections[0].Close()
 	time.Sleep(50 * time.Millisecond)
 
@@ -2597,30 +2410,22 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T)
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for new session after stale cleanup")
+		require.Fail(t, "timed out waiting for new session after stale cleanup")
 	}
 
 	// Verify new session works.
-	if err := srv.Send("test-connection", wspulse.Frame{Event: "after-stale"}); err != nil {
-		t.Fatalf("Send failed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "after-stale"}), "Send failed")
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, msg, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, _ := wspulse.JSONCodec.Decode(msg)
-	if f.Event != "after-stale" {
-		t.Errorf("Event: want %q, got %q", "after-stale", f.Event)
-	}
+	assert.Equal(t, "after-stale", f.Event)
 }
 
 // ── Resume: stateClosed path in handleRegister fires onDisconnect ─────────────
@@ -2676,16 +2481,14 @@ func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 		// Reconnect immediately — races the graceExpiredMessage goroutine.
 		var err error
 		c, _, err = dialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("Dial failed on cycle %d: %v", i, err)
-		}
+		require.NoError(t, err, "Dial failed on cycle %d", i)
 
 		// Wait for new session's onConnect before next cycle.
 		deadline := time.NewTimer(3 * time.Second)
 		for connects.Load() < target {
 			select {
 			case <-deadline.C:
-				t.Fatalf("timeout waiting for connect on cycle %d", i)
+				require.Failf(t, "timed out", "waiting for connect on cycle %d", i)
 			default:
 				time.Sleep(time.Millisecond)
 			}
@@ -2706,8 +2509,8 @@ func TestServer_Resume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	for disconnects.Load() < wantDisconnects {
 		select {
 		case <-deadline:
-			t.Fatalf("connects=%d disconnects=%d: onDisconnect not fired for all sessions",
-				connects.Load(), disconnects.Load())
+			require.Failf(t, "onDisconnect not fired for all sessions",
+				"connects=%d disconnects=%d", connects.Load(), disconnects.Load())
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -2735,7 +2538,7 @@ func TestServer_Broadcast_SkipsDirectlyClosedSession(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the connection directly — done is closed, but session stays in maps.
@@ -2743,9 +2546,7 @@ func TestServer_Broadcast_SkipsDirectlyClosedSession(t *testing.T) {
 
 	// Broadcast should skip the closed session without error.
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "skip-me"})
-	if err != nil {
-		t.Fatalf("Broadcast returned error: %v", err)
-	}
+	require.NoError(t, err, "Broadcast returned error")
 }
 
 // ── writePump: detach with long ping to ensure pumpQuit fires first ──────────
@@ -2772,7 +2573,7 @@ func TestServer_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close client transport to trigger suspend. With long ping period,
@@ -2784,22 +2585,16 @@ func TestServer_Resume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect failed")
 	t.Cleanup(func() { _ = c2.Close() })
 	time.Sleep(200 * time.Millisecond)
 
 	_ = srv.Send("test-connection", wspulse.Frame{Event: "verify"})
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, msg, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, _ := wspulse.JSONCodec.Decode(msg)
-	if f.Event != "verify" {
-		t.Errorf("Event: want %q, got %q", "verify", f.Event)
-	}
+	assert.Equal(t, "verify", f.Event)
 }
 
 // ── Session.Send when done closes concurrently ──────────────────────────────
@@ -2823,7 +2618,7 @@ func TestServer_ConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Flood the send buffer then close, racing enqueue against done.
@@ -2871,14 +2666,12 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial failed: %v", err)
-	}
+	require.NoError(t, err, "Dial failed")
 
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Send a proper WebSocket close frame with CloseGoingAway (1001).
@@ -2887,9 +2680,7 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 	// the else branch.
 	time.Sleep(100 * time.Millisecond) // ensure readPump is blocked on ReadMessage
 	closeMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, "")
-	if err := c.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
-		t.Fatalf("WriteMessage close failed: %v", err)
-	}
+	require.NoError(t, c.WriteMessage(websocket.CloseMessage, closeMsg), "WriteMessage close failed")
 
 	// Keep reading to allow gorilla's close handshake to complete.
 	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -2903,7 +2694,7 @@ func TestServer_ReadPump_NormalCloseFrame(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect")
+		require.Fail(t, "timed out waiting for onDisconnect")
 	}
 
 	// Close the client connection after the server has finished cleanup.
@@ -2936,7 +2727,7 @@ func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close the session externally — this sets state to stateClosed
@@ -2948,7 +2739,7 @@ func TestServer_ConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect after Connection.Close()")
+		require.Fail(t, "timed out waiting for onDisconnect after Connection.Close()")
 	}
 }
 
@@ -3000,7 +2791,7 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Disconnect (triggers suspend + grace timer via fakeClock).
@@ -3008,21 +2799,19 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect before firing the grace timer.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 	select {
 	case <-restored:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for transport restore")
+		require.Fail(t, "timed out waiting for transport restore")
 	}
 
 	// Fire the grace timer — session is already resumed (stateConnected),
@@ -3031,22 +2820,16 @@ func TestServer_Resume_GraceTimerFiresAfterReconnect(t *testing.T) {
 
 	// Verify session is still alive by round-tripping a frame.
 	frame := wspulse.Frame{Event: "still-alive", Payload: []byte(`"ok"`)}
-	if err := srv.Send("test-connection", frame); err != nil {
-		t.Fatalf("Send after grace timer expired should succeed: %v", err)
-	}
+	require.NoError(t, srv.Send("test-connection", frame), "Send after grace timer expired should succeed")
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage after grace timer expired failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage after grace timer expired failed")
 	f, _ := wspulse.JSONCodec.Decode(message)
-	if f.Event != "still-alive" {
-		t.Errorf("want type %q, got %q", "still-alive", f.Event)
-	}
+	assert.Equal(t, "still-alive", f.Event)
 
 	select {
 	case <-disconnected:
-		t.Fatal("onDisconnect should not fire — session was resumed before timer")
+		require.Fail(t, "onDisconnect should not fire — session was resumed before timer")
 	default:
 	}
 }
@@ -3083,7 +2866,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Disconnect (suspend epoch=1, timer A set for 1s).
@@ -3094,9 +2877,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	time.Sleep(200 * time.Millisecond)
 
 	// Disconnect again (suspend epoch=2, timer B set for 1s).
@@ -3109,7 +2890,7 @@ func TestServer_Resume_StaleGraceTimer(t *testing.T) {
 	case <-disconnected:
 		// Only one onDisconnect should fire (from timer B).
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect from second grace timer")
+		require.Fail(t, "timed out waiting for onDisconnect from second grace timer")
 	}
 }
 
@@ -3140,7 +2921,7 @@ func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Close externally → state becomes stateClosed before transport dies.
@@ -3151,7 +2932,7 @@ func TestServer_ConnectionClose_StateClosed_Resume(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for onDisconnect")
+		require.Fail(t, "timed out waiting for onDisconnect")
 	}
 }
 
@@ -3187,7 +2968,7 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Disconnect to enter suspended state.
@@ -3209,26 +2990,20 @@ func TestServer_Resume_DrainBufferFull(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	// Read at least one frame to verify the session is functional.
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed: %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed")
 	f, _ := wspulse.JSONCodec.Decode(message)
-	if f.Event != "buffered" {
-		t.Errorf("want type %q, got %q", "buffered", f.Event)
-	}
+	assert.Equal(t, "buffered", f.Event)
 
 	// Session should still be alive.
 	select {
 	case <-disconnected:
-		t.Fatal("onDisconnect should not fire after successful resume")
+		require.Fail(t, "onDisconnect should not fire after successful resume")
 	default:
 	}
 }
@@ -3263,7 +3038,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Drop the transport — session enters suspended state.
@@ -3273,9 +3048,7 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	time.Sleep(200 * time.Millisecond) // let hub process transportDied
 
 	// Confirm the session is still registered (suspended, not yet cleaned up).
-	if conns := srv.GetConnections("test-room"); len(conns) == 0 {
-		t.Fatal("session was removed before grace window elapsed; expected it to be suspended")
-	}
+	require.NotEmpty(t, srv.GetConnections("test-room"), "session was removed before grace window elapsed; expected it to be suspended")
 
 	// Application calls Close() on the suspended Connection.
 	_ = connection.Close()
@@ -3285,14 +3058,12 @@ func TestServer_Resume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testin
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("onDisconnect did not fire after Connection.Close() on suspended session")
+		require.Fail(t, "onDisconnect did not fire after Connection.Close() on suspended session")
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
 	time.Sleep(50 * time.Millisecond)
-	if conns := srv.GetConnections("test-room"); len(conns) != 0 {
-		t.Errorf("want 0 connections after Close + grace expiry, got %d", len(conns))
-	}
+	assert.Empty(t, srv.GetConnections("test-room"), "want 0 connections after Close + grace expiry")
 }
 
 // TestServer_Resume_ConnectionClose_ImmediateOnDisconnect verifies that calling
@@ -3329,7 +3100,7 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	select {
 	case connection = <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	// Drop the transport — session enters suspended state.
@@ -3347,18 +3118,15 @@ func TestServer_Resume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 	const wantWithin = 500 * time.Millisecond
 	select {
 	case <-disconnected:
-		if elapsed := time.Since(start); elapsed > wantWithin {
-			t.Fatalf("onDisconnect took %v after Connection.Close(), want < %v", elapsed, wantWithin)
-		}
+		require.Less(t, time.Since(start), wantWithin,
+			"onDisconnect took too long after Connection.Close()")
 	case <-time.After(gracePeriod):
-		t.Fatalf("onDisconnect did not fire within %v; fired after full grace window instead", gracePeriod)
+		require.Failf(t, "onDisconnect fired after full grace window", "did not fire within %v", gracePeriod)
 	}
 
 	// Session must be removed from hub maps after onDisconnect.
 	time.Sleep(50 * time.Millisecond)
-	if conns := srv.GetConnections("test-room"); len(conns) != 0 {
-		t.Errorf("want 0 connections after Close, got %d", len(conns))
-	}
+	assert.Empty(t, srv.GetConnections("test-room"), "want 0 connections after Close")
 }
 
 // TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect verifies that
@@ -3407,16 +3175,14 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	websockets := make([]*websocket.Conn, count)
 	for i := 0; i < count; i++ {
 		c, _, err := websocket.DefaultDialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("Dial %d: %v", i, err)
-		}
+		require.NoError(t, err, "Dial %d", i)
 		websockets[i] = c
 	}
 
 	select {
 	case <-allConnected:
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for all connections")
+		require.Fail(t, "timed out waiting for all connections")
 	}
 
 	// Drop all transports → all sessions enter suspended state.
@@ -3447,7 +3213,7 @@ func TestServer_Resume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	case <-allDisconnected:
 	case <-time.After(5 * time.Second):
 		got := disconnectCount.Load()
-		t.Fatalf("want %d onDisconnect calls, got %d (lost %d)", count, got, count-got)
+		require.Failf(t, "onDisconnect count mismatch", "want %d, got %d (lost %d)", count, got, count-got)
 	}
 }
 
@@ -3495,9 +3261,7 @@ func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
 	pairs := make([]pair, count)
 	for i := 0; i < count; i++ {
 		ws, _, err := websocket.DefaultDialer.Dial(u, nil)
-		if err != nil {
-			t.Fatalf("Dial %d: %v", i, err)
-		}
+		require.NoError(t, err, "Dial %d", i)
 		c := <-connected
 		pairs[i] = pair{ws: ws, conn: c}
 	}
@@ -3520,7 +3284,7 @@ func TestServer_Resume_CloseRacesTransportDied(t *testing.T) {
 	case <-allDisconnected:
 	case <-time.After(3 * time.Second):
 		got := disconnectCount.Load()
-		t.Fatalf("want %d onDisconnect within 3s, got %d (delayed by grace window?)", count, got)
+		require.Failf(t, "onDisconnect delayed by grace window", "want %d within 3s, got %d", count, got)
 	}
 }
 
@@ -3552,25 +3316,23 @@ func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
 
 	select {
 	case conn := <-dropped:
-		if conn.ID() != "test-connection" {
-			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
-		}
+		assert.Equal(t, "test-connection", conn.ID())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// err may be nil for a normal closure (CloseNormalClosure).
 	select {
 	case <-droppedErr:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop error")
+		require.Fail(t, "timed out waiting for OnTransportDrop error")
 	}
 }
 
@@ -3605,32 +3367,28 @@ func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with same connectionID.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	select {
 	case conn := <-restored:
-		if conn.ID() != "test-connection" {
-			t.Errorf("connection ID: want %q, got %q", "test-connection", conn.ID())
-		}
+		assert.Equal(t, "test-connection", conn.ID())
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportRestore")
+		require.Fail(t, "timed out waiting for OnTransportRestore")
 	}
 }
 
@@ -3675,7 +3433,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect")
+		require.Fail(t, "timed out waiting for connect")
 	}
 
 	_ = c.Close()
@@ -3683,7 +3441,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	select {
 	case <-disconnected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnDisconnect")
+		require.Fail(t, "timed out waiting for OnDisconnect")
 	}
 
 	// Verify transport callbacks did not fire (no resume window configured).
@@ -3726,11 +3484,9 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	c := dialTestServer(t, srv)
 	select {
 	case e := <-events:
-		if e != "connect" {
-			t.Fatalf("first event: want %q, got %q", "connect", e)
-		}
+		require.Equal(t, "connect", e, "first event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for connect event")
+		require.Fail(t, "timed out waiting for connect event")
 	}
 
 	_ = c.Close()
@@ -3738,22 +3494,18 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	// Expect: drop fires first, then disconnect fires after grace expires.
 	select {
 	case e := <-events:
-		if e != "drop" {
-			t.Fatalf("second event: want %q, got %q", "drop", e)
-		}
+		require.Equal(t, "drop", e, "second event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for drop event")
+		require.Fail(t, "timed out waiting for drop event")
 	}
 
 	fc.Fire(0)
 
 	select {
 	case e := <-events:
-		if e != "disconnect" {
-			t.Fatalf("third event: want %q, got %q", "disconnect", e)
-		}
+		require.Equal(t, "disconnect", e, "third event")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for disconnect event")
+		require.Fail(t, "timed out waiting for disconnect event")
 	}
 }
 
@@ -3791,51 +3543,41 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	// Wait for restore event first.
 	select {
 	case e := <-events:
-		if e != "restore" {
-			t.Fatalf("first event after reconnect: want %q, got %q", "restore", e)
-		}
+		require.Equal(t, "restore", e, "first event after reconnect")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for restore event")
+		require.Fail(t, "timed out waiting for restore event")
 	}
 
 	// Now send a message on the new transport.
 	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
-	if err != nil {
-		t.Fatalf("JSONCodec.Encode failed: %v", err)
-	}
-	if err := c2.WriteMessage(websocket.TextMessage, encoded); err != nil {
-		t.Fatalf("WriteMessage failed: %v", err)
-	}
+	require.NoError(t, err, "JSONCodec.Encode failed")
+	require.NoError(t, c2.WriteMessage(websocket.TextMessage, encoded), "WriteMessage failed")
 
 	select {
 	case e := <-events:
-		if e != "message" {
-			t.Fatalf("second event after reconnect: want %q, got %q", "message", e)
-		}
+		require.Equal(t, "message", e, "second event after reconnect")
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for message event")
+		require.Fail(t, "timed out waiting for message event")
 	}
 }
 
@@ -3880,38 +3622,30 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	_ = c1.Close()
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with same connectionID.
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	// The client must receive the frame sent from OnTransportRestore.
 	_ = c2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, message, err := c2.ReadMessage()
-	if err != nil {
-		t.Fatalf("ReadMessage failed (frame from OnTransportRestore not received): %v", err)
-	}
+	require.NoError(t, err, "ReadMessage failed (frame from OnTransportRestore not received)")
 	f, err := wspulse.JSONCodec.Decode(message)
-	if err != nil {
-		t.Fatalf("Decode failed: %v", err)
-	}
-	if f.Event != "from-restore" {
-		t.Errorf("event: want %q, got %q", "from-restore", f.Event)
-	}
+	require.NoError(t, err, "Decode failed")
+	assert.Equal(t, "from-restore", f.Event)
 }
 
 func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
@@ -3955,7 +3689,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	select {
 	case <-connected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for first connect")
+		require.Fail(t, "timed out waiting for first connect")
 	}
 
 	// Drop transport → session suspends, OnTransportDrop fires and calls Close().
@@ -3963,7 +3697,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	select {
 	case <-dropped:
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for OnTransportDrop")
+		require.Fail(t, "timed out waiting for OnTransportDrop")
 	}
 
 	// Reconnect with the same connectionID immediately. Depending on
@@ -3973,14 +3707,12 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
 	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 	c2, _, err := dialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("reconnect dial failed: %v", err)
-	}
+	require.NoError(t, err, "reconnect dial failed")
 	t.Cleanup(func() { _ = c2.Close() })
 
 	select {
 	case <-restoreFired:
-		t.Fatal("OnTransportRestore fired on a closed session")
+		require.Fail(t, "OnTransportRestore fired on a closed session")
 	case <-time.After(200 * time.Millisecond):
 		// OK — callback did not fire for the closed session.
 	}

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	wspulse "github.com/wspulse/server"
 )
 
@@ -37,12 +39,9 @@ func TestNoopCollector_AllMethodsCallable(t *testing.T) {
 
 func TestWithMetrics_NilPanics(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic for nil collector")
-		}
-	}()
-	_ = wspulse.WithMetrics(nil)
+	require.Panics(t, func() {
+		_ = wspulse.WithMetrics(nil)
+	})
 }
 
 func TestWithMetrics_DefaultIsNoop(t *testing.T) {
