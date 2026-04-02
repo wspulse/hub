@@ -648,8 +648,9 @@ func TestServer_ShutdownFiresOnDisconnect(t *testing.T) {
 	case <-allDone:
 	case <-time.After(3 * time.Second):
 		mu.Lock()
-		require.Failf(t, "timed out", "only %d/%d OnDisconnect callbacks fired", len(disconnected), connectionCount)
+		n := len(disconnected)
 		mu.Unlock()
+		require.Failf(t, "timed out", "only %d/%d OnDisconnect callbacks fired", n, connectionCount)
 	}
 
 	mu.Lock()
