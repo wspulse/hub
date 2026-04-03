@@ -70,6 +70,14 @@ type hub struct {
 	kick          chan kickRequest
 	done          chan struct{} // closed by Server.Close()
 
+	// activeConnections tracks the number of sessions with an active WebSocket
+	// transport. Suspended sessions (within resume window, awaiting reconnect)
+	// are excluded. This counter is used by ServeHTTP to enforce maxConnections
+	// as a resource-protection cap (goroutine pairs, file descriptors, send buffers).
+	//
+	// Written exclusively by the hub goroutine. Read atomically by ServeHTTP.
+	activeConnections atomic.Int64
+
 	mu      sync.RWMutex
 	stopped atomic.Bool // set by shutdown(); ServeHTTP checks this early
 	scratch []*session  // reusable slice for broadcast snapshot; avoids per-broadcast allocation
@@ -137,6 +145,8 @@ func (h *hub) handleRegister(message registerMessage) {
 			// already enqueued (timer fired before Stop) is detected
 			// as stale and ignored by handleGraceExpired.
 			existing.cancelGraceTimer()
+			existing.suspended = false
+			h.activeConnections.Add(1)
 
 			var onResume func()
 			if fn := h.config.onTransportRestore; fn != nil {
@@ -195,6 +205,7 @@ func (h *hub) handleRegister(message registerMessage) {
 		h.config.metrics.RoomCreated(message.roomID)
 	}
 
+	h.activeConnections.Add(1)
 	newSession.attachWS(message.transport, h, nil)
 	h.config.metrics.ConnectionOpened(message.roomID, message.connectionID)
 
@@ -276,6 +287,8 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			)
 			return
 		}
+		target.suspended = true
+		h.activeConnections.Add(-1)
 		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
 			select {
 			case h.graceExpired <- graceExpiredMessage{session: target, epoch: epoch}:
@@ -437,6 +450,9 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
 func (h *hub) disconnectSession(target *session, err error, reason DisconnectReason) {
+	if !target.suspended {
+		h.activeConnections.Add(-1)
+	}
 	h.removeSession(target)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
 	_ = target.Close()

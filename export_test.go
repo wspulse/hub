@@ -14,6 +14,12 @@ func WithClock(c Clock) ServerOption {
 	return func(cfg *serverConfig) { cfg.clock = c }
 }
 
+// ActiveConnections returns the current value of the activeConnections counter.
+// Test-only — used to verify counter correctness in component tests.
+func ActiveConnections(srv Server) int64 {
+	return srv.(*internalServer).hub.activeConnections.Load()
+}
+
 // InjectTransport bypasses ServeHTTP and pushes a registerMessage directly
 // into the hub's register channel. Test-only — allows component tests to
 // inject mock transports without HTTP upgrade.

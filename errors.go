@@ -21,6 +21,11 @@ var (
 	// ErrServerClosed is returned by Server.Broadcast (and potentially
 	// other methods) when the Server has already been shut down via Close().
 	ErrServerClosed = errors.New("wspulse: server is closed")
+
+	// ErrConnectionLimitReached is returned when the server has reached
+	// the maximum number of concurrent connections configured via
+	// WithMaxConnections. The HTTP response is 503 Service Unavailable.
+	ErrConnectionLimitReached = errors.New("wspulse: connection limit reached")
 )
 
 // PanicError wraps a panic recovered from an OnMessage callback.

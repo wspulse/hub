@@ -79,6 +79,11 @@ type session struct {
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
+	// suspended is true when the session's activeConnections counter has been
+	// decremented on transport detach. Prevents double-decrement in disconnectSession.
+	// Written only by the hub goroutine.
+	suspended bool
+
 	closeOnce sync.Once
 	config    *serverConfig
 }

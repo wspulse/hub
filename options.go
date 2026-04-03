@@ -52,6 +52,7 @@ type serverConfig struct {
 	clock                   clock
 	upgraderReadBufferSize  int
 	upgraderWriteBufferSize int
+	maxConnections          int // 0 = unlimited
 	metrics                 MetricsCollector
 }
 
@@ -251,6 +252,17 @@ func WithUpgraderBufferSize(readSize, writeSize int) ServerOption {
 		c.upgraderReadBufferSize = readSize
 		c.upgraderWriteBufferSize = writeSize
 	}
+}
+
+// WithMaxConnections sets the maximum number of concurrent connections.
+// When the limit is reached, new connections are rejected with HTTP 503
+// before the WebSocket upgrade. Zero means unlimited (the default).
+// Panics if n is negative.
+func WithMaxConnections(n int) ServerOption {
+	if n < 0 {
+		panic("wspulse: WithMaxConnections: n must be >= 0")
+	}
+	return func(c *serverConfig) { c.maxConnections = n }
 }
 
 // WithMetrics configures the MetricsCollector used by the Server.
