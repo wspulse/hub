@@ -143,6 +143,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | `WithCodec(c)`              | JSONCodec                            |
 | `WithCheckOrigin(fn)`       | allow all                            |
 | `WithLogger(l)`             | zap.NewNop() — accepts `*zap.Logger` |
+| `WithMaxConnections(n)`     | 0 (unlimited)                        |
 | `WithMetrics(mc)`           | NoopCollector — accepts `MetricsCollector` |
 
 ---

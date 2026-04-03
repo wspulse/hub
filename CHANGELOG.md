@@ -5,6 +5,7 @@
 ### Added
 
 - `NewTestServer(t, connect, opts...) string` — test helper for spinning up an in-process server with auto-cleanup; returns the `ws://...` URL string
+- `WithMaxConnections(n int)` — cap concurrent connections; new connections are rejected with HTTP 503 when the limit is reached. Suspended sessions (within resume window) do not count toward the limit
 
 ---
 
