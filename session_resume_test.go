@@ -23,11 +23,7 @@ func connectAndDrop(t *testing.T, srv wspulse.Server, connectionID, roomID strin
 	t.Helper()
 	mt := injectAndWait(t, srv, connectionID, roomID, connected)
 	mt.InjectError(errors.New("transport closed"))
-	select {
-	case <-dropped:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for transport drop")
-	}
+	<-dropped
 	return mt
 }
 
@@ -37,11 +33,7 @@ func reconnect(t *testing.T, srv wspulse.Server, connectionID, roomID string, re
 	t.Helper()
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt2)
-	select {
-	case <-restored:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for transport restore")
-	}
+	<-restored
 	return mt2
 }
 

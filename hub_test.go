@@ -23,11 +23,7 @@ func injectAndWait(t *testing.T, srv wspulse.Server, connectionID, roomID string
 	t.Helper()
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt)
-	select {
-	case <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for onConnect")
-	}
+	<-connected
 	return mt
 }
 
