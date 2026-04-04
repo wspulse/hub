@@ -1505,6 +1505,47 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	}
 }
 
+// ── Transport error preserved in OnDisconnect ────────────────────────────────
+
+// TestTransportError_PreservedInOnDisconnect verifies that when readPump exits
+// with an error, that error is forwarded to the OnDisconnect callback (not
+// swallowed as nil). Without resume, the hub calls disconnectSession with the
+// readPump error directly. The same error-forwarding logic applies to the
+// Close()+transportDied race paths when resume is enabled (PR #25).
+func TestTransportError_PreservedInOnDisconnect(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	disconnectErr := make(chan error, 1)
+
+	srv := wspulse.NewServer(
+		func(r *http.Request) (string, string, error) {
+			return "room", "err-conn", nil
+		},
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, err error) {
+			disconnectErr <- err
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	mt := injectAndWait(t, srv, "err-conn", "room", connected)
+
+	// Inject a transport error. readPump captures it as readErr and sends
+	// it via transportDied. Without resume, the hub calls disconnectSession
+	// with the error, which fires OnDisconnect with the same error.
+	mt.InjectError(errors.New("network reset"))
+
+	select {
+	case got := <-disconnectErr:
+		assert.ErrorContains(t, got, "network reset",
+			"OnDisconnect should receive the transport error")
+	case <-time.After(time.Second):
+		require.Fail(t, "timed out waiting for OnDisconnect")
+	}
+}
+
 // ── Resume: close races with transport died ─────────────────────────────────
 
 func TestResume_CloseRacesTransportDied(t *testing.T) {

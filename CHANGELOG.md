@@ -2,11 +2,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Fix race between `Close()` and `handleTransportDied` where `Close()` sets `stateClosed` before `detachWS()` runs, causing `onDisconnect` to never fire. The hub now calls `disconnectSession` when `detachWS` detects a concurrently-closed session.
-- Fix `ResumeAttempt` metric firing after `attachWS` goroutine spawn, creating a window where the recording is not visible to the test's synchronous assertion. Moved metric call before `attachWS`.
-
 ---
 
 ## [0.7.0] - 2026-04-04
@@ -20,6 +15,11 @@
 - Extracted `Transport` interface for WebSocket connection abstraction (enables mock-based testing via `InjectTransport`)
 - Migrated all tests to deterministic component tests using mock transport — zero network I/O, zero flakes
 - Adopted `testify` for test assertions
+
+### Fixed
+
+- Fix race between `Close()` and `handleTransportDied` where `Close()` sets `stateClosed` before `detachWS()` runs, causing `OnDisconnect` to never fire. The hub now calls `disconnectSession` when `detachWS` detects a concurrently-closed session.
+- Fix `ResumeAttempt` metric firing after `attachWS` goroutine spawn, creating a window where the recording is not visible to the test's synchronous assertion. Moved metric call before `attachWS`.
 
 ---
 
