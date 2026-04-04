@@ -18,7 +18,10 @@ func TestNewTestServer_ReturnsWSURL(t *testing.T) {
 	require.True(t, strings.HasPrefix(url, "ws://"),
 		"expected ws:// prefix, got %q", url)
 
-	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	c, resp, err := websocket.DefaultDialer.Dial(url, nil)
+	if resp != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.Close() })
 }

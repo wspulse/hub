@@ -7,8 +7,11 @@ import (
 )
 
 // fakeClock replaces both AfterFunc (grace timer) and NewTicker (heartbeat)
-// with controllable fakes. No real timers fire — tests drive time explicitly
-// via Fire (for AfterFunc callbacks) or by reading the returned ticker fields.
+// with controllable fakes. Timers created by AfterFunc are stopped on
+// creation and will not fire on their own — tests drive time explicitly
+// via Fire(i). However, production code may call Reset(0) on the returned
+// *time.Timer, which re-invokes the callback through the Go runtime
+// (see AfterFunc GoDoc below for details).
 type fakeClock struct {
 	mu      sync.Mutex
 	timers  []*fakeTimer

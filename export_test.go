@@ -18,7 +18,13 @@ func WithClock(c Clock) ServerOption {
 // into the hub's register channel. Test-only — allows component tests to
 // inject mock transports without HTTP upgrade.
 func InjectTransport(srv Server, connectionID, roomID string, transport core.Transport) {
-	s := srv.(*internalServer)
+	if srv == nil {
+		panic("wspulse: InjectTransport: server must not be nil; use a server created by NewServer")
+	}
+	s, ok := srv.(*internalServer)
+	if !ok {
+		panic("wspulse: InjectTransport: only works with servers created by NewServer")
+	}
 	msg := registerMessage{
 		connectionID: connectionID,
 		roomID:       roomID,
