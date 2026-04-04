@@ -230,6 +230,7 @@ func TestConcurrentCloseAndKick_NoRace(t *testing.T) {
 			}
 		}),
 	)
+	t.Cleanup(srv.Close)
 
 	_ = injectAndWait(t, srv, "test-connection", "test-room", connected)
 
@@ -260,6 +261,7 @@ func TestConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 			}
 		}),
 	)
+	t.Cleanup(srv.Close)
 
 	_ = injectAndWait(t, srv, "test-connection", "test-room", connected)
 
@@ -289,6 +291,7 @@ func TestClose_BlocksUntilHubExits(t *testing.T) {
 			connected <- struct{}{}
 		}),
 	)
+	t.Cleanup(srv.Close)
 
 	_ = injectAndWait(t, srv, "test-connection", "test-room", connected)
 

@@ -336,6 +336,7 @@ func TestMetricsCollector_Shutdown(t *testing.T) {
 			connected <- struct{}{}
 		}),
 	)
+	t.Cleanup(srv.Close)
 
 	_ = injectAndWait(t, srv, "conn-1", "shutdown-room", connected)
 	_ = injectAndWait(t, srv, "conn-2", "shutdown-room", connected)

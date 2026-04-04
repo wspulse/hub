@@ -25,6 +25,9 @@ func InjectTransport(srv Server, connectionID, roomID string, transport core.Tra
 	if !ok {
 		panic("wspulse: InjectTransport: only works with servers created by NewServer")
 	}
+	if transport == nil {
+		panic("wspulse: InjectTransport: transport must not be nil")
+	}
 	msg := registerMessage{
 		connectionID: connectionID,
 		roomID:       roomID,
