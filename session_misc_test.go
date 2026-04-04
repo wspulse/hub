@@ -44,11 +44,7 @@ func TestReadPumpPanicRecovery(t *testing.T) {
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
 	mt.InjectMessage(websocket.TextMessage, encoded)
 
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for OnDisconnect after panic")
-	}
+	requireReceive(t, disconnected)
 }
 
 func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
@@ -74,16 +70,12 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
 	mt.InjectMessage(websocket.TextMessage, encoded)
 
-	select {
-	case got := <-disconnectErr:
-		var pe *wspulse.PanicError
-		require.ErrorAs(t, got, &pe)
-		assert.Equal(t, "typed-boom", pe.Value)
-		require.NotEmpty(t, pe.Stack)
-		assert.Equal(t, "wspulse: onMessage panic: typed-boom", pe.Error())
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for OnDisconnect")
-	}
+	got := requireReceive(t, disconnectErr)
+	var pe *wspulse.PanicError
+	require.ErrorAs(t, got, &pe)
+	assert.Equal(t, "typed-boom", pe.Value)
+	require.NotEmpty(t, pe.Stack)
+	assert.Equal(t, "wspulse: onMessage panic: typed-boom", pe.Error())
 }
 
 // ── ReadPump malformed frame ────────────────────────────────────────────────
@@ -112,12 +104,8 @@ func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
 	mt.InjectMessage(websocket.TextMessage, encoded)
 
-	select {
-	case f := <-received:
-		assert.Equal(t, "valid", f.Event)
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for valid frame after malformed one")
-	}
+	f := requireReceive(t, received)
+	assert.Equal(t, "valid", f.Event)
 }
 
 // ── Broadcast drop-oldest with slow client ──────────────────────────────────
@@ -301,11 +289,7 @@ func TestClose_BlocksUntilHubExits(t *testing.T) {
 		close(done)
 	}()
 
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		require.Fail(t, "Close() did not return within timeout")
-	}
+	requireReceive(t, done)
 }
 
 // ── Connection.Send after Close ─────────────────────────────────────────────
@@ -327,20 +311,11 @@ func TestConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
 
 	// Kill transport to trigger disconnect.
 	mt.InjectError(errors.New("closed"))
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected)
 
 	err := conn.Send(wspulse.Frame{Event: "after-close"})
 	assert.ErrorIs(t, err, wspulse.ErrConnectionClosed)
@@ -365,11 +340,7 @@ func TestBroadcast_SkipsClosedSession(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 	mt.InjectError(errors.New("closed"))
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected)
 
 	// Broadcast to the room — should not panic or error despite closed session.
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "after-close"})
@@ -395,11 +366,7 @@ func TestGetConnections_EmptyAfterDisconnect(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 	mt.InjectError(errors.New("closed"))
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected)
 
 	// Poll until hub processes removal instead of fixed sleep.
 	deadline := time.Now().Add(time.Second)
@@ -458,12 +425,7 @@ func TestConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
 
 	err := conn.Send(wspulse.Frame{Event: "test"})
 	assert.Error(t, err)
@@ -496,11 +458,7 @@ func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 	// Then kill the transport.
 	mt.InjectError(errors.New("closed"))
 
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected)
 }
 
 // ── HTTP-layer tests (use httptest, no mock transport) ──────────────────────
@@ -559,12 +517,8 @@ func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.Close() })
 
-	select {
-	case conn := <-connected:
-		assert.NotEmpty(t, conn.ID(), "expected server-generated UUID")
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
+	assert.NotEmpty(t, conn.ID(), "expected server-generated UUID")
 }
 
 // ── Connection.Send with done closed ────────────────────────────────────────
@@ -586,20 +540,11 @@ func TestConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
 
 	// Kick to close the session.
 	require.NoError(t, srv.Kick("test-connection"))
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected)
 
 	// Send after done is closed.
 	err := conn.Send(wspulse.Frame{Event: "late"})
@@ -636,11 +581,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 
 	// Wait for all connections to register before closing.
 	for i := 0; i < count; i++ {
-		select {
-		case <-connected:
-		case <-time.After(time.Second):
-			require.Fail(t, "timed out waiting for connect")
-		}
+		requireReceive(t, connected)
 	}
 	srv.Close()
 	wg.Wait()

@@ -75,12 +75,8 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 	require.NoError(t, err)
 	mt.InjectMessage(websocket.TextMessage, encoded)
 
-	select {
-	case f := <-received:
-		assert.Equal(t, "msg", f.Event)
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for OnMessage callback")
-	}
+	f := requireReceive(t, received)
+	assert.Equal(t, "msg", f.Event)
 }
 
 // ── Broadcast ────────────────────────────────────────────────────────────────
@@ -155,11 +151,7 @@ func TestOnDisconnect_CallbackFires(t *testing.T) {
 	// Simulate transport drop — readPump exits, triggers disconnect.
 	mt.InjectError(errors.New("connection closed"))
 
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for OnDisconnect")
-	}
+	requireReceive(t, disconnected)
 }
 
 // ── Kick ─────────────────────────────────────────────────────────────────────
@@ -183,11 +175,7 @@ func TestKick_ClosesConnection(t *testing.T) {
 
 	require.NoError(t, srv.Kick("test-connection"))
 
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnection after Kick")
-	}
+	requireReceive(t, disconnected)
 }
 
 // ── GetConnections ───────────────────────────────────────────────────────────
@@ -239,16 +227,8 @@ func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
 
-	select {
-	case <-kicked:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for duplicate kick")
-	}
-	select {
-	case <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for second connection")
-	}
+	requireReceive(t, kicked)
+	requireReceive(t, connected)
 
 	// Verify second connection is reachable.
 	frame := wspulse.Frame{Event: "ok", Payload: []byte(`"after-kick"`)}
@@ -276,20 +256,11 @@ func TestConnectionDone_ClosedOnKick(t *testing.T) {
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
 
 	require.NoError(t, srv.Kick(conn.ID()))
 
-	select {
-	case <-conn.Done():
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for Connection.Done()")
-	}
+	requireReceive(t, conn.Done())
 }
 
 // ── Broadcast to empty room ─────────────────────────────────────────────────
@@ -385,22 +356,14 @@ func TestShutdownFiresOnDisconnect(t *testing.T) {
 	for i := 0; i < count; i++ {
 		mt := newMockTransport()
 		wspulse.InjectTransport(srv, fmt.Sprintf("conn-%d", i+1), "room", mt)
-		select {
-		case <-connected:
-		case <-time.After(time.Second):
-			require.Fail(t, "timed out waiting for connect")
-		}
+		requireReceive(t, connected)
 	}
 
 	srv.Close()
 
 	for i := 0; i < count; i++ {
-		select {
-		case err := <-disconnected:
-			assert.ErrorIs(t, err, wspulse.ErrServerClosed)
-		case <-time.After(time.Second):
-			require.Fail(t, "timed out waiting for OnDisconnect on shutdown")
-		}
+		err := requireReceive(t, disconnected)
+		assert.ErrorIs(t, err, wspulse.ErrServerClosed)
 	}
 }
 
@@ -421,12 +384,7 @@ func TestConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected)
 
 	// Rapid-fire send to fill the buffer.
 	var gotBufferFull bool
