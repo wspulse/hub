@@ -75,7 +75,7 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 	require.NoError(t, err)
 	mt.InjectMessage(websocket.TextMessage, encoded)
 
-	f := requireReceive(t, received, "OnMessage callback")
+	f := requireReceive(t, received)
 	assert.Equal(t, "msg", f.Event)
 }
 
@@ -151,7 +151,7 @@ func TestOnDisconnect_CallbackFires(t *testing.T) {
 	// Simulate transport drop — readPump exits, triggers disconnect.
 	mt.InjectError(errors.New("connection closed"))
 
-	requireReceive(t, disconnected, "OnDisconnect")
+	requireReceive(t, disconnected)
 }
 
 // ── Kick ─────────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ func TestKick_ClosesConnection(t *testing.T) {
 
 	require.NoError(t, srv.Kick("test-connection"))
 
-	requireReceive(t, disconnected, "disconnection after Kick")
+	requireReceive(t, disconnected)
 }
 
 // ── GetConnections ───────────────────────────────────────────────────────────
@@ -227,8 +227,8 @@ func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
 
-	requireReceive(t, kicked, "duplicate kick")
-	requireReceive(t, connected, "second connection")
+	requireReceive(t, kicked)
+	requireReceive(t, connected)
 
 	// Verify second connection is reachable.
 	frame := wspulse.Frame{Event: "ok", Payload: []byte(`"after-kick"`)}
@@ -256,11 +256,11 @@ func TestConnectionDone_ClosedOnKick(t *testing.T) {
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	require.NoError(t, srv.Kick(conn.ID()))
 
-	requireReceive(t, conn.Done(), "Connection.Done()")
+	requireReceive(t, conn.Done())
 }
 
 // ── Broadcast to empty room ─────────────────────────────────────────────────
@@ -356,13 +356,13 @@ func TestShutdownFiresOnDisconnect(t *testing.T) {
 	for i := 0; i < count; i++ {
 		mt := newMockTransport()
 		wspulse.InjectTransport(srv, fmt.Sprintf("conn-%d", i+1), "room", mt)
-		requireReceive(t, connected, "connect")
+		requireReceive(t, connected)
 	}
 
 	srv.Close()
 
 	for i := 0; i < count; i++ {
-		err := requireReceive(t, disconnected, "OnDisconnect on shutdown")
+		err := requireReceive(t, disconnected)
 		assert.ErrorIs(t, err, wspulse.ErrServerClosed)
 	}
 }
@@ -384,7 +384,7 @@ func TestConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Rapid-fire send to fill the buffer.
 	var gotBufferFull bool

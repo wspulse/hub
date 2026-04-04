@@ -146,7 +146,7 @@ func TestResume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	// Fire the grace timer.
 	fc.Fire(0)
 
-	requireReceive(t, disconnected, "OnDisconnect after grace expiry")
+	requireReceive(t, disconnected)
 }
 
 // ── Resume: buffered frames delivered ───────────────────────────────────────
@@ -245,7 +245,7 @@ func TestResume_KickBypassesWindow(t *testing.T) {
 	// Kick should bypass the resume window and fire OnDisconnect immediately.
 	require.NoError(t, srv.Kick("test-connection"))
 
-	requireReceive(t, disconnected, "OnDisconnect after Kick")
+	requireReceive(t, disconnected)
 }
 
 // ── Resume: no resume window → disconnects immediately ──────────────────────
@@ -276,7 +276,7 @@ func TestResume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 	mt.InjectError(errors.New("transport closed"))
 
-	requireReceive(t, disconnected, "OnDisconnect (no resume window)")
+	requireReceive(t, disconnected)
 }
 
 // ── Resume: server close terminates suspended ───────────────────────────────
@@ -315,7 +315,7 @@ func TestResume_ServerCloseTerminatesSuspended(t *testing.T) {
 	// Close server while session is suspended.
 	srv.Close()
 
-	err := requireReceive(t, disconnected, "OnDisconnect from server close on suspended session")
+	err := requireReceive(t, disconnected)
 	assert.ErrorIs(t, err, wspulse.ErrServerClosed)
 }
 
@@ -400,16 +400,16 @@ func TestResume_ConnectionCloseWhileSuspended(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Drop transport to enter suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Close the connection while suspended — should fire OnDisconnect immediately.
 	require.NoError(t, conn.Close())
 
-	requireReceive(t, disconnected, "OnDisconnect after Connection.Close on suspended session")
+	requireReceive(t, disconnected)
 }
 
 // ── Transport callbacks: drop fires on suspend ──────────────────────────────
@@ -440,7 +440,7 @@ func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 	mt.InjectError(errors.New("test: connection reset"))
 
-	_ = requireReceive(t, dropErr, "OnTransportDrop")
+	_ = requireReceive(t, dropErr)
 }
 
 // ── Transport callbacks: restore fires on resume ────────────────────────────
@@ -516,7 +516,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 	mt.InjectError(errors.New("transport closed"))
 
-	requireReceive(t, disconnected, "OnDisconnect")
+	requireReceive(t, disconnected)
 
 	assert.False(t, dropFired.Load(), "OnTransportDrop should not fire without resume window")
 	assert.False(t, restoreFired.Load(), "OnTransportRestore should not fire without resume window")
@@ -559,13 +559,13 @@ func TestResume_ConcurrentReconnect_NoRace(t *testing.T) {
 		wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
 		if i == 0 {
-			requireReceive(t, connected, "cycle %d: waiting for connect", i)
+			requireReceive(t, connected)
 		} else {
-			requireReceive(t, restored, "cycle %d: waiting for transport restore", i)
+			requireReceive(t, restored)
 		}
 
 		mt.InjectError(errors.New("transport closed"))
-		requireReceive(t, dropped, "cycle %d: waiting for transport drop", i)
+		requireReceive(t, dropped)
 	}
 }
 
@@ -611,7 +611,7 @@ func TestResume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	}
 
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Reconnect while broadcasts are still in flight.
 	mt2 := newMockTransport()
@@ -661,11 +661,11 @@ func TestResume_StaleClosedSession_Reconnect(t *testing.T) {
 
 	// Close transport and fire the grace timer.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "OnTransportDrop")
+	requireReceive(t, dropped)
 
 	fc.Fire(0)
 
-	requireReceive(t, disconnected, "grace expiry disconnect")
+	requireReceive(t, disconnected)
 
 	// Reconnect with the same connectionID — hits stateClosed branch.
 	mt2 := injectAndWait(t, srv, "test-connection", "test-room", connected)
@@ -716,13 +716,13 @@ func TestResume_MultipleRapidCycles(t *testing.T) {
 		wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
 		if i == 0 {
-			requireReceive(t, connected, "cycle %d: waiting for connect", i)
+			requireReceive(t, connected)
 		} else {
-			requireReceive(t, restored, "cycle %d: waiting for transport restore", i)
+			requireReceive(t, restored)
 		}
 
 		mt.InjectError(errors.New("transport closed"))
-		requireReceive(t, dropped, "cycle %d: waiting for transport drop", i)
+		requireReceive(t, dropped)
 	}
 }
 
@@ -755,11 +755,11 @@ func TestResume_GraceExpiresAfterConnectionClose(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Close transport to enter suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "OnTransportDrop")
+	requireReceive(t, dropped)
 
 	// Application calls Close() on the Connection while suspended.
 	require.NoError(t, conn.Close())
@@ -811,7 +811,7 @@ func TestResume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 
 	require.NoError(t, srv.Kick("test-connection"))
 
-	requireReceive(t, disconnected, "OnDisconnect")
+	requireReceive(t, disconnected)
 	// Wait for hub to finish deferred cleanup (connection removal).
 	deadline := time.Now().Add(time.Second)
 	for len(srv.GetConnections("test-room")) > 0 {
@@ -858,7 +858,7 @@ func TestResume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	// Second connection with same ID while first is still connected.
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
-	requireReceive(t, kicked, "duplicate kick")
+	requireReceive(t, kicked)
 }
 
 // ── Resume: writePump stops on pumpQuit ─────────────────────────────────────
@@ -905,7 +905,7 @@ func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 
 	// Close transport to suspend, writePump gets pumpQuit.
 	mt1.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Reconnect — triggers attachWS, which waits for old pumpDone.
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
@@ -957,7 +957,7 @@ func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	// Close client transport to trigger suspend. With long ping period,
 	// writePump won't attempt any writes before pumpQuit fires.
 	mt1.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Reconnect to prove the old writePump has exited correctly.
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
@@ -999,7 +999,7 @@ func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 
 	// Close transport to enter suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Get the connection reference and call Close() on it.
 	connections := srv.GetConnections("test-room")
@@ -1064,7 +1064,7 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 
 	// Suspend the session by dropping the transport.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Call Close() on the suspended session.
 	conns := srv.GetConnections("test-room")
@@ -1076,7 +1076,7 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	mt2 := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// The old session's onDisconnect should fire.
-	requireReceive(t, disconnected, "onDisconnect from stale session")
+	requireReceive(t, disconnected)
 
 	// Verify new session works.
 	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}))
@@ -1189,11 +1189,11 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Drop the transport — session enters suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Confirm the session is still registered (suspended).
 	require.NotEmpty(t, srv.GetConnections("test-room"),
@@ -1203,7 +1203,7 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 	_ = conn.Close()
 
 	// onDisconnect must fire.
-	requireReceive(t, disconnected, "onDisconnect after Connection.Close() on suspended session")
+	requireReceive(t, disconnected)
 
 	// Session must be removed from hub maps after onDisconnect.
 	deadline := time.Now().Add(time.Second)
@@ -1249,11 +1249,11 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Drop the transport — session enters suspended state.
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "transport drop")
+	requireReceive(t, dropped)
 
 	// Application calls Close() on the suspended session.
 	start := time.Now()
@@ -1404,7 +1404,7 @@ func TestTransportError_PreservedInOnDisconnect(t *testing.T) {
 	// with the error, which fires OnDisconnect with the same error.
 	mt.InjectError(errors.New("network reset"))
 
-	got := requireReceive(t, disconnectErr, "OnDisconnect")
+	got := requireReceive(t, disconnectErr)
 	assert.ErrorContains(t, got, "network reset",
 		"OnDisconnect should receive the transport error")
 }
@@ -1596,7 +1596,7 @@ func TestResume_StaleGraceTimer(t *testing.T) {
 	// Cycle 2: reconnect (resume), then drop again. Timer 1 (epoch=2).
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 	mt2.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "second drop")
+	requireReceive(t, dropped)
 
 	// Cycle 3: reconnect again (resume).
 	mt3 := reconnect(t, srv, "test-connection", "test-room", restored)
@@ -1647,14 +1647,14 @@ func TestConnectionClose_StateClosed_TransportDied(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Close the session externally — this sets state to stateClosed
 	// and closes done. writePump sees done, closes transport.
 	// readPump gets a read error and sends transportDied.
 	_ = conn.Close()
 
-	requireReceive(t, disconnected, "onDisconnect after Connection.Close()")
+	requireReceive(t, disconnected)
 }
 
 // ── Connection.Close stateClosed then resume attempt ────────────────────────
@@ -1684,12 +1684,12 @@ func TestConnectionClose_StateClosed_Resume(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	conn := requireReceive(t, connected, "connect")
+	conn := requireReceive(t, connected)
 
 	// Close externally — state becomes stateClosed before transport dies.
 	_ = conn.Close()
 
-	requireReceive(t, disconnected, "onDisconnect")
+	requireReceive(t, disconnected)
 }
 
 // ── OnTransportDrop: grace expires then disconnect ──────────────────────────
@@ -1718,18 +1718,18 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 
-	e := requireReceive(t, events, "connect event")
+	e := requireReceive(t, events)
 	require.Equal(t, "connect", e, "first event")
 
 	mt.InjectError(errors.New("transport closed"))
 
 	// Expect: drop fires first, then disconnect fires after grace expires.
-	e = requireReceive(t, events, "drop event")
+	e = requireReceive(t, events)
 	require.Equal(t, "drop", e, "second event")
 
 	fc.Fire(0)
 
-	e = requireReceive(t, events, "disconnect event")
+	e = requireReceive(t, events)
 	require.Equal(t, "disconnect", e, "third event")
 }
 
@@ -1774,7 +1774,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
 
 	// Wait for restore event first.
-	e := requireReceive(t, events, "restore event")
+	e := requireReceive(t, events)
 	require.Equal(t, "restore", e, "first event after reconnect")
 	_ = restored // not used here
 
@@ -1783,7 +1783,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	require.NoError(t, err)
 	mt2.InjectMessage(wspulse.TextMessage, encoded)
 
-	e = requireReceive(t, events, "message event")
+	e = requireReceive(t, events)
 	require.Equal(t, "message", e, "second event after reconnect")
 }
 
@@ -1872,11 +1872,11 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
-	requireReceive(t, connected, "first connect")
+	requireReceive(t, connected)
 
 	// Drop transport — session suspends, OnTransportDrop fires and calls Close().
 	mt.InjectError(errors.New("transport closed"))
-	requireReceive(t, dropped, "OnTransportDrop")
+	requireReceive(t, dropped)
 
 	// Reconnect with the same connectionID immediately. Depending on
 	// hub event ordering, the old closed session may or may not still
