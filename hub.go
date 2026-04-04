@@ -294,6 +294,10 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
 				zap.String("conn_id", target.id),
 			)
+			// Pass message.err (not nil): OnTransportDrop was never called
+			// because detachWS succeeded but Close() raced in before the
+			// timer was assigned. The transport error must reach OnDisconnect
+			// so it is delivered exactly once across the two callbacks.
 			h.disconnectSession(target, message.err, DisconnectNormal)
 			return
 		}
