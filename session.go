@@ -460,17 +460,13 @@ func (s *session) readPump(transport core.Transport, h *hub) {
 			if errors.As(err, &ne) && ne.Timeout() {
 				s.config.metrics.PongTimeout(s.roomID, s.id)
 			}
-			if websocket.IsUnexpectedCloseError(err,
-				websocket.CloseGoingAway,
-				websocket.CloseNormalClosure,
-				websocket.CloseAbnormalClosure,
-			) {
-				readErr = err
-				s.config.logger.Warn("wspulse: unexpected close", zap.String("conn_id", s.id), zap.Error(err))
-			} else {
+			if isNormalClose(err) {
 				s.config.logger.Debug("wspulse: connection closed normally",
 					zap.String("conn_id", s.id),
 				)
+			} else {
+				readErr = err
+				s.config.logger.Warn("wspulse: unexpected close", zap.String("conn_id", s.id), zap.Error(err))
 			}
 			return
 		}
@@ -484,6 +480,32 @@ func (s *session) readPump(transport core.Transport, h *hub) {
 			fn(s, frame)
 		}
 	}
+}
+
+// isNormalClose reports whether err represents an expected, orderly
+// connection close. When true, OnDisconnect receives a nil error.
+//
+// Normal close conditions:
+//   - net.ErrClosed: local Close(), Kick(), or Server.Close() closed
+//     the transport via writePump defer.
+//   - *websocket.CloseError with code 1000 (CloseNormalClosure):
+//     remote sent a standard close frame.
+//   - *websocket.CloseError with code 1001 (CloseGoingAway):
+//     remote is shutting down (e.g. browser tab closed).
+//
+// Everything else is abnormal and propagated to OnDisconnect as a
+// non-nil error: network resets, I/O timeouts, CloseAbnormalClosure
+// (1006), protocol errors, and any other read failure.
+func isNormalClose(err error) bool {
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var ce *websocket.CloseError
+	if errors.As(err, &ce) {
+		return ce.Code == websocket.CloseNormalClosure ||
+			ce.Code == websocket.CloseGoingAway
+	}
+	return false
 }
 
 // writePump drains the send channel and drives the Ping heartbeat on the transport.

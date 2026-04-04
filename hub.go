@@ -275,7 +275,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			h.config.logger.Debug("wspulse: detachWS returned not-ok (session closed concurrently)",
 				zap.String("conn_id", target.id),
 			)
-			h.disconnectSession(target, nil, DisconnectNormal)
+			h.disconnectSession(target, message.err, DisconnectNormal)
 			return
 		}
 		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
@@ -294,7 +294,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
 				zap.String("conn_id", target.id),
 			)
-			h.disconnectSession(target, nil, DisconnectNormal)
+			h.disconnectSession(target, message.err, DisconnectNormal)
 			return
 		}
 		target.graceTimer = timer
