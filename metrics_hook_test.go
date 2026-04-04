@@ -160,6 +160,7 @@ func TestMetricsCollector_ResumeAttempt(t *testing.T) {
 			return "resume-room", "resume-conn", nil
 		},
 		wspulse.WithMetrics(rec),
+		wspulse.WithClock(newFakeClock()),
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
