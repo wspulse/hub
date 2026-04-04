@@ -142,8 +142,8 @@ func (h *hub) handleRegister(message registerMessage) {
 			if fn := h.config.onTransportRestore; fn != nil {
 				onResume = func() { fn(existing) }
 			}
-			existing.attachWS(message.transport, h, onResume)
 			h.config.metrics.ResumeAttempt(existing.roomID, existing.id)
+			existing.attachWS(message.transport, h, onResume)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
@@ -270,10 +270,12 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 		epoch, ok := target.detachWS()
 		if !ok {
 			// Session was concurrently closed (e.g. via external Close()).
-			// State is already stateClosed; nothing more to do.
+			// Close() only sets stateClosed — it does not remove the session
+			// from hub maps or fire onDisconnect. Do that here.
 			h.config.logger.Debug("wspulse: detachWS returned not-ok (session closed concurrently)",
 				zap.String("conn_id", target.id),
 			)
+			h.disconnectSession(target, nil, DisconnectNormal)
 			return
 		}
 		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
