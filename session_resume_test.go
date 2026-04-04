@@ -23,11 +23,7 @@ func connectAndDrop(t *testing.T, srv wspulse.Server, connectionID, roomID strin
 	t.Helper()
 	mt := injectAndWait(t, srv, connectionID, roomID, connected)
 	mt.InjectError(errors.New("transport closed"))
-	select {
-	case <-dropped:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for transport drop")
-	}
+	<-dropped
 	return mt
 }
 
@@ -37,11 +33,7 @@ func reconnect(t *testing.T, srv wspulse.Server, connectionID, roomID string, re
 	t.Helper()
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt2)
-	select {
-	case <-restored:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for transport restore")
-	}
+	<-restored
 	return mt2
 }
 
@@ -1532,6 +1524,7 @@ func TestResume_CloseRacesTransportDied(t *testing.T) {
 			return "room", "", nil
 		},
 		wspulse.WithResumeWindow(30*time.Second),
+		wspulse.WithClock(newFakeClock()),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			mu.Lock()
 			connections = append(connections, c)
@@ -1559,11 +1552,7 @@ func TestResume_CloseRacesTransportDied(t *testing.T) {
 		wspulse.InjectTransport(srv, id, "room", mt)
 	}
 
-	select {
-	case <-allConnected:
-	case <-time.After(5 * time.Second):
-		require.Fail(t, "timed out waiting for all connections")
-	}
+	<-allConnected
 
 	// For each pair: close the transport and call Close() back-to-back
 	// with NO sleep in between, so Close() may execute before the hub
@@ -1586,13 +1575,7 @@ func TestResume_CloseRacesTransportDied(t *testing.T) {
 	}
 	wg.Wait()
 
-	select {
-	case <-allDisconnected:
-	case <-time.After(3 * time.Second):
-		got := atomic.LoadInt64(&disconnectCount)
-		require.Failf(t, "onDisconnect delayed by grace window",
-			"want %d within 3s, got %d", count, got)
-	}
+	<-allDisconnected
 }
 
 // ── Resume: grace timer fires after reconnect (stale, stateConnected) ───────

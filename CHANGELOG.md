@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix race between `Close()` and `handleTransportDied` where `Close()` sets `stateClosed` before `detachWS()` runs, causing `onDisconnect` to never fire. The hub now calls `disconnectSession` when `detachWS` detects a concurrently-closed session.
+- Fix `ResumeAttempt` metric firing after `attachWS` goroutine spawn, creating a window where the recording is not visible to the test's synchronous assertion. Moved metric call before `attachWS`.
+
 ---
 
 ## [0.7.0] - 2026-04-04
