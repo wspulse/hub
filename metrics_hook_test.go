@@ -75,11 +75,7 @@ func TestMetricsCollector_ConnectionLifecycle(t *testing.T) {
 
 	// Kill transport.
 	mt.InjectError(errors.New("closed"))
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected, "disconnect")
 
 	assert.Equal(t, 1, rec.countByName("ConnectionClosed"), "ConnectionClosed")
 	assert.Equal(t, 1, rec.countByName("RoomDestroyed"), "RoomDestroyed")
@@ -127,11 +123,7 @@ func TestMetricsCollector_MessageFlow(t *testing.T) {
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "test"})
 	mt1.InjectMessage(websocket.TextMessage, encoded)
 
-	select {
-	case <-broadcastDone:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for broadcast")
-	}
+	requireReceive(t, broadcastDone, "broadcast")
 
 	// Wait for MessageSent to fire for both connections.
 	deadline := time.Now().Add(time.Second)
@@ -209,12 +201,7 @@ func TestMetricsCollector_FrameDropped_SendFull(t *testing.T) {
 
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, "drop-conn", "drop-room", mt)
-	var conn wspulse.Connection
-	select {
-	case conn = <-connected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for connect")
-	}
+	conn := requireReceive(t, connected, "connect")
 
 	frame := wspulse.Frame{Event: "fill", Payload: []byte(`{}`)}
 	var gotBufferFull bool
@@ -305,11 +292,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 	// Inject a timeout error to simulate pong timeout.
 	mt.InjectError(&timeoutError{})
 
-	select {
-	case <-disconnected:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect")
-	}
+	requireReceive(t, disconnected, "disconnect")
 
 	assert.Equal(t, 1, rec.countByName("PongTimeout"), "PongTimeout")
 }
