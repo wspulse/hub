@@ -9,4 +9,5 @@ jobs:
   stress:
     uses: wspulse/.github/.github/workflows/go-stress.yml@main
     permissions:
+      contents: read
       issues: write
