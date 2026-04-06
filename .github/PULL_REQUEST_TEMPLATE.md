@@ -2,6 +2,10 @@
 
 <!-- What does this PR do and why? One or two sentences. -->
 
+## Related issues <!-- optional -->
+
+<!-- Link related issues: "Closes #N" if resolved by this PR, "Relates to org/repo#N" if cross-repo. Remove this section if none. -->
+
 ## Changes
 
 <!-- List the concrete changes made. Be specific. -->
