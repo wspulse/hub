@@ -1768,15 +1768,12 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	connectAndDrop(t, srv, "test-connection", "test-room", connected, dropped)
 
 	// Reconnect.
-	restored := make(chan struct{}, 1)
-	// We need a restore signal. Use events channel.
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
 
 	// Wait for restore event first.
 	e := requireReceive(t, events)
 	require.Equal(t, "restore", e, "first event after reconnect")
-	_ = restored // not used here
 
 	// Now send a message on the new transport.
 	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})

@@ -12,7 +12,7 @@
 
 ### Changed
 
-- Extracted `Transport` interface for WebSocket connection abstraction (enables mock-based testing via `InjectTransport`)
+- Extracted `Transport` interface for WebSocket connection abstraction (enables the package's own component tests to inject mock transports via `InjectTransport`; `NewTestServer` is the public test helper for external consumers)
 - Migrated all tests to deterministic component tests using mock transport — zero network I/O, zero flakes
 - Adopted `testify` for test assertions
 
