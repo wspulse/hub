@@ -486,16 +486,19 @@ func (s *session) readPump(transport core.Transport, h *hub) {
 // connection close. When true, OnDisconnect receives a nil error.
 //
 // Normal close conditions:
-//   - net.ErrClosed: local Close(), Kick(), or Server.Close() closed
-//     the transport via writePump defer.
+//   - net.ErrClosed: the transport was closed by the local writePump defer.
 //   - *websocket.CloseError with code 1000 (CloseNormalClosure):
 //     remote sent a standard close frame.
 //   - *websocket.CloseError with code 1001 (CloseGoingAway):
 //     remote is shutting down (e.g. browser tab closed).
+//   - *websocket.CloseError with code 1006 (CloseAbnormalClosure):
+//     TCP connection dropped without a close frame (e.g. network change,
+//     NAT timeout). Treated as normal because session resumption handles
+//     transient disconnects transparently — OnDisconnect only fires if
+//     the client fails to reconnect within the resume window.
 //
 // Everything else is abnormal and propagated to OnDisconnect as a
-// non-nil error: network resets, I/O timeouts, CloseAbnormalClosure
-// (1006), protocol errors, and any other read failure.
+// non-nil error: I/O timeouts, protocol errors, and other read failures.
 func isNormalClose(err error) bool {
 	if errors.Is(err, net.ErrClosed) {
 		return true
@@ -503,7 +506,8 @@ func isNormalClose(err error) bool {
 	var ce *websocket.CloseError
 	if errors.As(err, &ce) {
 		return ce.Code == websocket.CloseNormalClosure ||
-			ce.Code == websocket.CloseGoingAway
+			ce.Code == websocket.CloseGoingAway ||
+			ce.Code == websocket.CloseAbnormalClosure
 	}
 	return false
 }
