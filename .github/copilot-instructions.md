@@ -6,12 +6,12 @@ wspulse/server is a **minimal, production-ready WebSocket server library** for G
 
 ## Architecture
 
-- **`server.go`** — `Server` interface (public API: `Send`, `Broadcast`, `Kick`, `GetConnections`, `Close`) and `NewServer` constructor. Implements `http.Handler`.
-- **`hub.go`** — Central single-threaded event loop. Manages all sessions and routes messages via channels. No `net/http` imports.
+- **`server.go`** — `Hub` interface (public API: `Send`, `Broadcast`, `Kick`, `GetConnections`, `Close`) and `NewHub` constructor. Implements `http.Handler`.
+- **`heart.go`** — Central single-threaded event loop. Manages all sessions and routes messages via channels. No `net/http` imports.
 - **`session.go`** — `Connection` interface and the unexported `session` struct. Per-connection `readPump` + `writePump` goroutine pair; ping/pong heartbeat; backpressure drop.
-- **`options.go`** — `ServerOption` functional options, `ConnectFunc` type, and all `WithXxx` option builders.
+- **`options.go`** — `HubOption` functional options, `ConnectFunc` type, and all `WithXxx` option builders.
 - **`resume.go`** — Ring buffer for buffering frames during temporary disconnects (session resumption).
-- **`errors.go`** — Server-only sentinel errors: `ErrConnectionNotFound`, `ErrDuplicateConnectionID`, `ErrServerClosed`.
+- **`errors.go`** — Hub-only sentinel errors: `ErrConnectionNotFound`, `ErrDuplicateConnectionID`, `ErrHubClosed`.
 - **`doc/internals.md`** — Internal architecture documentation.
 - Wire protocol specification has moved to the [`.github` repo](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 
@@ -76,7 +76,7 @@ All new features and design changes follow this process — do not skip steps:
 1. **Read before write** — always read the target file and `doc/internals.md` fully before editing. For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 2. **Minimal changes** — one concern per edit; no drive-by refactors.
 3. **No hardcoded secrets** — all configuration via environment variables.
-4. **Hub serialization** — all session state mutations must go through the hub's event loop. Never mutate session state from outside the hub goroutine.
+4. **Heart serialization** — all session state mutations must go through the heart's event loop. Never mutate session state from outside the heart goroutine.
 5. **Goroutine lifecycle** — every goroutine launched must have an explicit, documented exit condition. `Close()` must not leak goroutines. Use `go.uber.org/goleak` in `TestMain` to catch leaks during testing.
 6. **No breaking changes without version bump** — never rename, remove, or change the signature of an exported symbol without bumping the major version. When unsure, add alongside the old symbol and deprecate.
 7. **STOP — test first, fix second** — when a bug is discovered or reported, do NOT touch production code until a failing test exists. Follow this exact sequence without skipping or reordering:

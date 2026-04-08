@@ -51,7 +51,7 @@ All commit messages must be in English.
 
 ## Architecture Constraints
 
-**Hub serialization is critical.** All session state mutations must go through the hub's event loop. Never mutate session state from outside the hub goroutine. PRs that violate this will be rejected regardless of test coverage.
+**Heart serialization is critical.** All session state mutations must go through the heart's event loop. Never mutate session state from outside the heart goroutine. PRs that violate this will be rejected regardless of test coverage.
 
 **Goroutine lifecycle.** Every goroutine started must have a documented, explicit exit condition. `Close()` must not leak goroutines. Use `go.uber.org/goleak` to verify — it is integrated in `TestMain`.
 

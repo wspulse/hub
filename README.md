@@ -14,7 +14,7 @@ A minimal, production-ready WebSocket server for Go with room-based routing, ses
 ## Design Goals
 
 - Thin transport layer: no business logic, no auth, no message history
-- Three public concepts: `Server`, `Connection`, `Frame`
+- Three public concepts: `Hub`, `Connection`, `Frame`
 - Plug in any HTTP router via `http.Handler`
 - Swappable codecs: JSON (default) or binary (e.g. Protobuf)
 - Transparent session resumption with configurable grace window
@@ -34,7 +34,7 @@ go get github.com/wspulse/server
 ```go
 import "github.com/wspulse/server" // package name: wspulse
 
-srv := wspulse.NewServer(
+srv := wspulse.NewHub(
     // ConnectFunc: authenticate and assign room + connection IDs
     func(r *http.Request) (roomID, connectionID string, err error) {
         token := r.URL.Query().Get("token")
@@ -64,7 +64,7 @@ router.GET("/ws", func(c *gin.Context) {
 })
 ```
 
-### Server-initiated push
+### Hub-initiated push
 
 ```go
 // Send to a specific connection
@@ -102,8 +102,8 @@ rtr.On("chat.join", func(c *router.Context) {
     _ = c.Connection.Send(welcome)
 })
 
-var srv wspulse.Server
-srv = wspulse.NewServer(
+var srv wspulse.Hub
+srv = wspulse.NewHub(
     connectFunc,
     wspulse.WithOnMessage(func(conn wspulse.Connection, f wspulse.Frame) {
         rtr.Dispatch(conn, f)
@@ -119,14 +119,14 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 
 | Symbol        | Description                                                             |
 | ------------- | ----------------------------------------------------------------------- |
-| `Server`      | Manages sessions, heartbeats, and room routing                          |
+| `Hub`         | Manages sessions, heartbeats, and room routing                          |
 | `Connection`  | A logical WebSocket session (`ID`, `RoomID`, `Send`, `Close`, `Done`)   |
 | `Frame`       | Transport unit (`Event`, `Payload []byte`) — re-exported from core       |
 | `ConnectFunc` | `func(*http.Request) (roomID, connectionID string, err error)`          |
 | `Codec`       | Interface: `Encode(Frame)`, `Decode([]byte)`, `FrameType()` — from core |
 | `JSONCodec`   | Default codec — text frames, JSON payload — re-exported from core       |
 
-### Server options
+### Hub options
 
 | Option                      | Default                              |
 | --------------------------- | ------------------------------------ |
@@ -155,8 +155,8 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 - **Automatic heartbeat** — server-side Ping / Pong with configurable intervals (`WithHeartbeat`).
 - **Backpressure** — bounded per-connection send buffer; oldest frame is dropped on overflow during broadcast.
 - **Swappable codec** — JSON by default; implement the `Codec` interface to plug in any encoding (binary, Protobuf, MessagePack, etc.).
-- **Kick** — `Server.Kick(connectionID)` always destroys the session immediately, bypassing the resume window.
-- **Graceful shutdown** — `Server.Close()` sends close frames to all connected clients, drains in-flight registrations, and fires `OnDisconnect` for every session.
+- **Kick** — `Hub.Kick(connectionID)` always destroys the session immediately, bypassing the resume window.
+- **Graceful shutdown** — `Hub.Close()` sends close frames to all connected clients, drains in-flight registrations, and fires `OnDisconnect` for every session.
 - **Metrics** — optional `MetricsCollector` interface for observability; default is `NoopCollector` (minimal overhead). See [Metrics](#metrics) below.
 
 ---
@@ -170,7 +170,7 @@ wspulse/server exposes a `MetricsCollector` interface with typed hooks for conne
 // or implement MetricsCollector yourself.
 var collector wspulse.MetricsCollector = myCollector
 
-srv := wspulse.NewServer(connect,
+srv := wspulse.NewHub(connect,
     wspulse.WithMetrics(collector),
 )
 ```
@@ -209,7 +209,7 @@ import (
     "github.com/wspulse/core/router"
 )
 
-var srv wspulse.Server
+var srv wspulse.Hub
 
 r := router.New()
 r.Use(router.Recovery())
@@ -232,7 +232,7 @@ r.On("ping", func(c *router.Context) {
     _ = c.Connection.Send(wspulse.Frame{Event: "pong"})
 })
 
-srv = wspulse.NewServer(
+srv = wspulse.NewHub(
     connectFn,
     wspulse.WithOnMessage(func(conn wspulse.Connection, f wspulse.Frame) {
         r.Dispatch(conn, f)
