@@ -58,7 +58,7 @@ type kickRequest struct {
 // External callers interact through channels or mu-guarded read helpers.
 //
 // All mutations are serialized inside run()'s select loop.
-// h.mu (RWMutex) lets external goroutines read rooms/connectionsByID lock-free.
+// h.mu (RWMutex) lets external goroutines read rooms/connectionsByID under RLock.
 type heart struct {
 	rooms           map[string]map[string]*session // roomID → connectionID → session
 	connectionsByID map[string]*session            // connectionID → session (flat index)
