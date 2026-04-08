@@ -19,7 +19,7 @@ import (
 
 // connectAndDrop injects a mock transport, waits for onConnect, then kills it
 // to trigger session suspension. Returns the dead transport.
-func connectAndDrop(t *testing.T, srv wspulse.Server, connectionID, roomID string, connected, dropped chan struct{}) *mockTransport {
+func connectAndDrop(t *testing.T, srv wspulse.Hub, connectionID, roomID string, connected, dropped chan struct{}) *mockTransport {
 	t.Helper()
 	mt := injectAndWait(t, srv, connectionID, roomID, connected)
 	mt.InjectError(errors.New("transport closed"))
@@ -29,7 +29,7 @@ func connectAndDrop(t *testing.T, srv wspulse.Server, connectionID, roomID strin
 
 // reconnect injects a new mock transport for the same connectionID to trigger
 // session resumption. Waits for onTransportRestore. Returns the new transport.
-func reconnect(t *testing.T, srv wspulse.Server, connectionID, roomID string, restored chan struct{}) *mockTransport {
+func reconnect(t *testing.T, srv wspulse.Hub, connectionID, roomID string, restored chan struct{}) *mockTransport {
 	t.Helper()
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt2)
@@ -46,7 +46,7 @@ func TestResume_ReconnectWithinWindow(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -113,7 +113,7 @@ func TestResume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -157,7 +157,7 @@ func TestResume_BufferedFramesDelivered(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -216,7 +216,7 @@ func TestResume_KickBypassesWindow(t *testing.T) {
 	disconnected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -255,7 +255,7 @@ func TestResume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		// No WithResumeWindow — default is 0 (disabled).
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -287,7 +287,7 @@ func TestResume_ServerCloseTerminatesSuspended(t *testing.T) {
 	disconnected := make(chan error, 1)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -316,7 +316,7 @@ func TestResume_ServerCloseTerminatesSuspended(t *testing.T) {
 	srv.Close()
 
 	err := requireReceive(t, disconnected)
-	assert.ErrorIs(t, err, wspulse.ErrServerClosed)
+	assert.ErrorIs(t, err, wspulse.ErrHubClosed)
 }
 
 // ── Resume: broadcast while suspended ───────────────────────────────────────
@@ -327,7 +327,7 @@ func TestResume_BroadcastWhileSuspended(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -374,7 +374,7 @@ func TestResume_ConnectionCloseWhileSuspended(t *testing.T) {
 	disconnected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -419,7 +419,7 @@ func TestOnTransportDrop_FiresOnSuspend(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	dropErr := make(chan error, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -451,7 +451,7 @@ func TestOnTransportRestore_FiresOnResume(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -489,7 +489,7 @@ func TestTransportCallbacks_NotFired_WithoutResumeWindow(t *testing.T) {
 	var dropFired atomic.Bool
 	var restoreFired atomic.Bool
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		// No resume window.
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -530,7 +530,7 @@ func TestResume_ConcurrentReconnect_NoRace(t *testing.T) {
 	dropped := make(chan struct{}, 10)
 	restored := make(chan struct{}, 10)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(2*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -576,7 +576,7 @@ func TestResume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(2*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -631,7 +631,7 @@ func TestResume_StaleClosedSession_Reconnect(t *testing.T) {
 	dropped := make(chan struct{}, 4)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -687,7 +687,7 @@ func TestResume_MultipleRapidCycles(t *testing.T) {
 	dropped := make(chan struct{}, 10)
 	restored := make(chan struct{}, 10)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -734,7 +734,7 @@ func TestResume_GraceExpiresAfterConnectionClose(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -789,7 +789,7 @@ func TestResume_KickWhileConnected_TransportDiedHandled(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -832,7 +832,7 @@ func TestResume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 		mu             sync.Mutex
 		connectCount   int
 	)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -869,7 +869,7 @@ func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -927,7 +927,7 @@ func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithHeartbeat(5*time.Second, 30*time.Second), // long ping period
@@ -977,7 +977,7 @@ func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 	connected := make(chan struct{}, 4)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -1036,7 +1036,7 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	disconnected := make(chan struct{}, 4)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(60*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -1096,7 +1096,7 @@ func TestResume_DrainBufferFull(t *testing.T) {
 	restored := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithSendBufferSize(1),
 		wspulse.WithResumeWindow(5*time.Second),
@@ -1166,7 +1166,7 @@ func TestResume_ConnectionCloseWhileSuspended_FiresOnDisconnect(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	var once sync.Once
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(time.Second),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -1226,7 +1226,7 @@ func TestResume_ConnectionClose_ImmediateOnDisconnect(t *testing.T) {
 
 	const gracePeriod = 5 * time.Second
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(gracePeriod),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -1294,7 +1294,7 @@ func TestResume_MassCloseWhileSuspended_AllOnDisconnect(t *testing.T) {
 	var dropCount int64
 	allDropped := make(chan struct{})
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
 		},
@@ -1384,7 +1384,7 @@ func TestTransportError_PreservedInOnDisconnect(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnectErr := make(chan error, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "room", "err-conn", nil
 		},
@@ -1423,7 +1423,7 @@ func TestResume_CloseRacesTransportDied(t *testing.T) {
 	allDisconnected := make(chan struct{})
 
 	connIdx := 0
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
 		},
@@ -1492,7 +1492,7 @@ func TestResume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	restored := make(chan struct{}, 1)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -1559,7 +1559,7 @@ func TestResume_StaleGraceTimer(t *testing.T) {
 	restored := make(chan struct{}, 10)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -1628,7 +1628,7 @@ func TestConnectionClose_StateClosed_TransportDied(t *testing.T) {
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			select {
@@ -1664,7 +1664,7 @@ func TestConnectionClose_StateClosed_Resume(t *testing.T) {
 	connected := make(chan wspulse.Connection, 2)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -1699,7 +1699,7 @@ func TestOnTransportDrop_GraceExpires_ThenDisconnect(t *testing.T) {
 	events := make(chan string, 4)
 	fc := newFakeClock()
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(3*time.Minute),
 		wspulse.WithClock(fc),
@@ -1741,7 +1741,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -1791,7 +1791,7 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -1840,7 +1840,7 @@ func TestOnTransportRestore_NotFiredOnClosedSession(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restoreFired := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {

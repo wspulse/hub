@@ -44,7 +44,7 @@ type broadcastMessage struct {
 	data   []byte
 }
 
-// kickRequest is sent by server.Kick to terminate a session.
+// kickRequest is sent by Hub.Kick to terminate a session.
 // Routed through the hub so that map removal, session close, and
 // onDisconnect are serialized with all other state mutations.
 type kickRequest struct {
@@ -68,15 +68,15 @@ type hub struct {
 	graceExpired  chan graceExpiredMessage
 	broadcast     chan broadcastMessage
 	kick          chan kickRequest
-	done          chan struct{} // closed by Server.Close()
+	done          chan struct{} // closed by Hub.Close()
 
 	mu      sync.RWMutex
 	stopped atomic.Bool // set by shutdown(); ServeHTTP checks this early
 	scratch []*session  // reusable slice for broadcast snapshot; avoids per-broadcast allocation
-	config  *serverConfig
+	config  *hubConfig
 }
 
-func newHub(config *serverConfig) *hub {
+func newHub(config *hubConfig) *hub {
 	return &hub{
 		rooms:           make(map[string]map[string]*session),
 		connectionsByID: make(map[string]*session),
@@ -91,7 +91,7 @@ func newHub(config *serverConfig) *hub {
 }
 
 // run is the hub's main event loop. It serializes all state mutations.
-// Exits when done is closed (via Server.Close()).
+// Exits when done is closed (via Hub.Close()).
 func (h *hub) run() {
 	for {
 		select {
@@ -512,7 +512,7 @@ func (h *hub) shutdown() {
 	// Emit metrics outside the lock to avoid deadlocks if the
 	// MetricsCollector calls back into server APIs.
 	for _, info := range closedInfos {
-		h.config.metrics.ConnectionClosed(info.roomID, info.connectionID, info.duration, DisconnectServerClose)
+		h.config.metrics.ConnectionClosed(info.roomID, info.connectionID, info.duration, DisconnectHubClose)
 	}
 	for _, roomID := range destroyedRooms {
 		h.config.metrics.RoomDestroyed(roomID)
@@ -533,7 +533,7 @@ drained:
 		for _, target := range disconnected {
 			fn := h.config.onDisconnect
 			s := target
-			go fn(s, ErrServerClosed)
+			go fn(s, ErrHubClosed)
 		}
 	}
 	h.config.logger.Info("wspulse: hub shutdown complete",

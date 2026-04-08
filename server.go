@@ -9,9 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// Server is the public interface for the WebSocket server.
+// Hub is the public interface for the wspulse WebSocket session manager.
 // Callers depend on this interface rather than the concrete implementation.
-type Server interface {
+type Hub interface {
 	http.Handler
 
 	// Send enqueues a Frame for the connection identified by connectionID.
@@ -32,26 +32,26 @@ type Server interface {
 	// active WebSocket transport.
 	GetConnections(roomID string) []Connection
 
-	// Close gracefully shuts down the server, terminating all connections.
+	// Close gracefully shuts down the Hub, terminating all connections.
 	Close()
 }
 
-// internalServer is the unexported, concrete implementation of Server.
-type internalServer struct {
-	config    *serverConfig
+// internalHub is the unexported, concrete implementation of Hub.
+type internalHub struct {
+	config    *hubConfig
 	hub       *hub
 	upgrader  websocket.Upgrader
 	closeOnce sync.Once
 	hubDone   chan struct{} // closed when the hub goroutine fully exits
 }
 
-// verify Server interface is satisfied at compile time.
-var _ Server = (*internalServer)(nil)
+// verify Hub interface is satisfied at compile time.
+var _ Hub = (*internalHub)(nil)
 
-// NewServer creates and starts a Server. connect must not be nil.
-func NewServer(connect ConnectFunc, options ...ServerOption) Server {
+// NewHub creates and starts a Hub. connect must not be nil.
+func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 	if connect == nil {
-		panic("wspulse: NewServer: connect must not be nil")
+		panic("wspulse: NewHub: connect must not be nil")
 	}
 	config := defaultConfig(connect)
 	for _, option := range options {
@@ -77,7 +77,7 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 			}
 		}
 	}()
-	srv := &internalServer{
+	srv := &internalHub{
 		config:  config,
 		hub:     h,
 		hubDone: hubDone,
@@ -87,7 +87,7 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 			CheckOrigin:     config.checkOrigin,
 		},
 	}
-	config.logger.Info("wspulse: server started",
+	config.logger.Info("wspulse: hub started",
 		zap.Duration("ping_period", config.pingPeriod),
 		zap.Duration("resume_window", config.resumeWindow),
 		zap.Int("send_buffer_size", config.sendBufferSize),
@@ -97,10 +97,10 @@ func NewServer(connect ConnectFunc, options ...ServerOption) Server {
 
 // ServeHTTP upgrades the HTTP connection to WebSocket.
 // ConnectFunc is called to authenticate; a non-nil error yields HTTP 401.
-func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Quick bail — hub is shutting down; don't upgrade or enqueue.
 	if s.hub.stopped.Load() {
-		s.config.logger.Warn("wspulse: ServeHTTP rejected — server closed")
+		s.config.logger.Warn("wspulse: ServeHTTP rejected — hub closed")
 		http.Error(w, "server closed", http.StatusServiceUnavailable)
 		return
 	}
@@ -147,7 +147,7 @@ func (s *internalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Send enqueues a Frame for the connection identified by connectionID.
-func (s *internalServer) Send(connectionID string, f Frame) error {
+func (s *internalHub) Send(connectionID string, f Frame) error {
 	target := s.hub.get(connectionID)
 	if target == nil {
 		return ErrConnectionNotFound
@@ -156,10 +156,10 @@ func (s *internalServer) Send(connectionID string, f Frame) error {
 }
 
 // Broadcast enqueues a Frame for every active connection in roomID.
-func (s *internalServer) Broadcast(roomID string, f Frame) error {
+func (s *internalHub) Broadcast(roomID string, f Frame) error {
 	select {
 	case <-s.hub.done:
-		return ErrServerClosed
+		return ErrHubClosed
 	default:
 	}
 
@@ -175,7 +175,7 @@ func (s *internalServer) Broadcast(roomID string, f Frame) error {
 	case s.hub.broadcast <- broadcastMessage{roomID: roomID, data: data}:
 		return nil
 	case <-s.hub.done:
-		return ErrServerClosed
+		return ErrHubClosed
 	}
 }
 
@@ -183,33 +183,33 @@ func (s *internalServer) Broadcast(roomID string, f Frame) error {
 // Always bypasses the resume window — the session is destroyed
 // immediately without entering the suspended state.
 // Routed through the hub so cleanup is serialized with other state mutations.
-func (s *internalServer) Kick(connectionID string) error {
+func (s *internalHub) Kick(connectionID string) error {
 	result := make(chan error, 1)
 	select {
 	case s.hub.kick <- kickRequest{connectionID: connectionID, result: result}:
 	case <-s.hub.done:
-		return ErrServerClosed
+		return ErrHubClosed
 	}
 	select {
 	case err := <-result:
 		return err
 	case <-s.hub.done:
-		return ErrServerClosed
+		return ErrHubClosed
 	}
 }
 
 // GetConnections returns a snapshot of all registered connections in roomID.
-func (s *internalServer) GetConnections(roomID string) []Connection {
+func (s *internalHub) GetConnections(roomID string) []Connection {
 	return s.hub.getConnections(roomID)
 }
 
-// Close gracefully shuts down the Server and blocks until the hub
+// Close gracefully shuts down the Hub and blocks until the hub
 // goroutine has fully exited and all managed resources are released.
 // Safe to call multiple times and from multiple goroutines; only the
 // first call triggers shutdown, but all calls block until completion.
-func (s *internalServer) Close() {
+func (s *internalHub) Close() {
 	s.closeOnce.Do(func() {
-		s.config.logger.Info("wspulse: server closing")
+		s.config.logger.Info("wspulse: hub closing")
 		close(s.hub.done)
 	})
 	<-s.hubDone

@@ -5,11 +5,11 @@ import (
 	"fmt"
 )
 
-// Server-only sentinel errors. Shared errors (ErrConnectionClosed,
+// Hub-only sentinel errors. Shared errors (ErrConnectionClosed,
 // ErrSendBufferFull) live in github.com/wspulse/core and are re-exported
 // in types.go for convenience.
 var (
-	// ErrConnectionNotFound is returned by Server.Send and Server.Kick
+	// ErrConnectionNotFound is returned by Hub.Send and Hub.Kick
 	// when connectionID has no active connection.
 	ErrConnectionNotFound = errors.New("wspulse: connection not found")
 
@@ -18,9 +18,9 @@ var (
 	// with the same connectionID.
 	ErrDuplicateConnectionID = errors.New("wspulse: kicked: duplicate connection ID")
 
-	// ErrServerClosed is returned by Server.Broadcast (and potentially
-	// other methods) when the Server has already been shut down via Close().
-	ErrServerClosed = errors.New("wspulse: server is closed")
+	// ErrHubClosed is returned by Hub.Broadcast (and potentially
+	// other methods) when the Hub has already been shut down via Close().
+	ErrHubClosed = errors.New("wspulse: server is closed")
 )
 
 // PanicError wraps a panic recovered from an OnMessage callback.

@@ -19,9 +19,9 @@ const (
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
 // roomID and connectionID for the new connection.
 // Returning a non-nil error rejects the upgrade with HTTP 401.
-// If connectionID is empty the Server assigns a random UUID so that every connection
+// If connectionID is empty the Hub assigns a random UUID so that every connection
 // has a unique, non-empty ID. Use a non-empty connectionID when the application needs
-// deterministic IDs (e.g. for Server.Send and Server.Kick).
+// deterministic IDs (e.g. for Hub.Send and Hub.Kick).
 //
 // On session resumption (reconnect of a suspended session within the resume
 // window), the roomID returned by ConnectFunc is ignored — the session retains
@@ -30,10 +30,10 @@ const (
 // session), the roomID from ConnectFunc determines the room.
 type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 
-// ServerOption configures a Server.
-type ServerOption func(*serverConfig) //nolint:revive
+// HubOption configures a Hub.
+type HubOption func(*hubConfig) //nolint:revive
 
-type serverConfig struct {
+type hubConfig struct {
 	connect                 ConnectFunc
 	onConnect               func(Connection)
 	onMessage               func(Connection, Frame)
@@ -55,8 +55,8 @@ type serverConfig struct {
 	metrics                 MetricsCollector
 }
 
-func defaultConfig(connect ConnectFunc) *serverConfig {
-	return &serverConfig{
+func defaultConfig(connect ConnectFunc) *hubConfig {
+	return &hubConfig{
 		connect:                 connect,
 		pingPeriod:              10 * time.Second,
 		pongWait:                30 * time.Second,
@@ -75,9 +75,9 @@ func defaultConfig(connect ConnectFunc) *serverConfig {
 }
 
 // WithOnConnect registers a callback invoked after a connection is established
-// and registered with the Server. The callback runs in a separate goroutine.
-func WithOnConnect(fn func(Connection)) ServerOption {
-	return func(c *serverConfig) { c.onConnect = fn }
+// and registered with the Hub. The callback runs in a separate goroutine.
+func WithOnConnect(fn func(Connection)) HubOption {
+	return func(c *hubConfig) { c.onConnect = fn }
 }
 
 // WithOnMessage registers a callback invoked for every inbound Frame received from
@@ -88,16 +88,16 @@ func WithOnConnect(fn func(Connection)) ServerOption {
 // On resume, the new readPump starts only after the old one has fully exited.
 // Handlers should still be safe for concurrent use when application code
 // accesses Connection from other goroutines (e.g. Send from an HTTP handler).
-func WithOnMessage(fn func(Connection, Frame)) ServerOption {
-	return func(c *serverConfig) { c.onMessage = fn }
+func WithOnMessage(fn func(Connection, Frame)) HubOption {
+	return func(c *hubConfig) { c.onMessage = fn }
 }
 
 // WithOnDisconnect registers a callback invoked when a connection terminates.
 // err is nil for a normal closure. The callback runs in a separate goroutine.
 // When WithResumeWindow is configured, this fires only after the resume window
 // expires without reconnection (not on every transport drop).
-func WithOnDisconnect(fn func(Connection, error)) ServerOption {
-	return func(c *serverConfig) { c.onDisconnect = fn }
+func WithOnDisconnect(fn func(Connection, error)) HubOption {
+	return func(c *hubConfig) { c.onDisconnect = fn }
 }
 
 // WithOnTransportDrop registers a callback invoked when a connection's
@@ -115,8 +115,8 @@ func WithOnDisconnect(fn func(Connection, error)) ServerOption {
 //     (OnDisconnect fires directly instead).
 //
 // The callback runs in a separate goroutine; it must be safe for concurrent use.
-func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
-	return func(c *serverConfig) { c.onTransportDrop = fn }
+func WithOnTransportDrop(fn func(Connection, error)) HubOption {
+	return func(c *hubConfig) { c.onTransportDrop = fn }
 }
 
 // WithOnTransportRestore registers a callback invoked when a suspended session
@@ -133,14 +133,14 @@ func WithOnTransportDrop(fn func(Connection, error)) ServerOption {
 //     (OnDisconnect fires instead).
 //
 // The callback runs in a separate goroutine; it must be safe for concurrent use.
-func WithOnTransportRestore(fn func(Connection)) ServerOption {
-	return func(c *serverConfig) { c.onTransportRestore = fn }
+func WithOnTransportRestore(fn func(Connection)) HubOption {
+	return func(c *hubConfig) { c.onTransportRestore = fn }
 }
 
 // WithHeartbeat configures Ping/Pong heartbeat intervals.
 // Defaults: pingPeriod=10 s, pongWait=30 s.
 // pingPeriod must be in (0, 5m] and pongWait must be in (pingPeriod, 10m].
-func WithHeartbeat(pingPeriod, pongWait time.Duration) ServerOption {
+func WithHeartbeat(pingPeriod, pongWait time.Duration) HubOption {
 	if pingPeriod <= 0 || pongWait <= 0 || pingPeriod >= pongWait {
 		panic("wspulse: WithHeartbeat: pingPeriod must be positive and strictly less than pongWait")
 	}
@@ -150,7 +150,7 @@ func WithHeartbeat(pingPeriod, pongWait time.Duration) ServerOption {
 	if pongWait > maxPongWait {
 		panic("wspulse: WithHeartbeat: pongWait exceeds maximum (10m)")
 	}
-	return func(c *serverConfig) {
+	return func(c *hubConfig) {
 		c.pingPeriod = pingPeriod
 		c.pongWait = pongWait
 	}
@@ -158,47 +158,47 @@ func WithHeartbeat(pingPeriod, pongWait time.Duration) ServerOption {
 
 // WithWriteWait sets the deadline for a single write operation on a connection.
 // d must be in (0, 30s].
-func WithWriteWait(d time.Duration) ServerOption {
+func WithWriteWait(d time.Duration) HubOption {
 	if d <= 0 {
 		panic("wspulse: WithWriteWait: duration must be positive")
 	}
 	if d > maxWriteWait {
 		panic("wspulse: WithWriteWait: duration exceeds maximum (30s)")
 	}
-	return func(c *serverConfig) { c.writeWait = d }
+	return func(c *hubConfig) { c.writeWait = d }
 }
 
 // WithMaxMessageSize sets the maximum size in bytes for inbound messages.
 // n must be in [1, 67108864] (64 MiB).
-func WithMaxMessageSize(n int64) ServerOption {
+func WithMaxMessageSize(n int64) HubOption {
 	if n < 1 {
 		panic("wspulse: WithMaxMessageSize: n must be at least 1")
 	}
 	if n > maxMsgSizeBytes {
 		panic("wspulse: WithMaxMessageSize: n exceeds maximum (64 MiB)")
 	}
-	return func(c *serverConfig) { c.maxMessageSize = n }
+	return func(c *hubConfig) { c.maxMessageSize = n }
 }
 
 // WithSendBufferSize sets the per-connection outbound channel capacity (number of frames).
 // n must be in [1, 4096].
-func WithSendBufferSize(n int) ServerOption {
+func WithSendBufferSize(n int) HubOption {
 	if n < 1 {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
 	}
 	if n > maxSendBufFrames {
 		panic("wspulse: WithSendBufferSize: n exceeds maximum (4096)")
 	}
-	return func(c *serverConfig) { c.sendBufferSize = n }
+	return func(c *hubConfig) { c.sendBufferSize = n }
 }
 
 // WithCodec replaces the default JSONCodec with the provided Codec.
 // Panics if codec is nil.
-func WithCodec(codec Codec) ServerOption {
+func WithCodec(codec Codec) HubOption {
 	if codec == nil {
 		panic("wspulse: WithCodec: codec must not be nil")
 	}
-	return func(c *serverConfig) { c.codec = codec }
+	return func(c *hubConfig) { c.codec = codec }
 }
 
 // WithCheckOrigin sets the origin validation function for WebSocket upgrades.
@@ -206,22 +206,22 @@ func WithCodec(codec Codec) ServerOption {
 // Panics if fn is nil; pass the default (accept-all) explicitly if desired:
 //
 //	server.WithCheckOrigin(func(*http.Request) bool { return true })
-func WithCheckOrigin(fn func(r *http.Request) bool) ServerOption {
+func WithCheckOrigin(fn func(r *http.Request) bool) HubOption {
 	if fn == nil {
 		panic("wspulse: WithCheckOrigin: fn must not be nil")
 	}
-	return func(c *serverConfig) { c.checkOrigin = fn }
+	return func(c *hubConfig) { c.checkOrigin = fn }
 }
 
 // WithLogger sets the zap logger used for internal diagnostics.
 // Defaults to zap.NewNop() (silent). Pass the application logger to route
 // wspulse transport logs through the same zap core (encoder, level, async writer).
 // Panics if l is nil; pass zap.NewNop() explicitly if a no-op logger is desired.
-func WithLogger(l *zap.Logger) ServerOption {
+func WithLogger(l *zap.Logger) HubOption {
 	if l == nil {
 		panic("wspulse: WithLogger: logger must not be nil")
 	}
-	return func(c *serverConfig) { c.logger = l }
+	return func(c *hubConfig) { c.logger = l }
 }
 
 // WithResumeWindow configures the session resumption window. When a transport
@@ -229,36 +229,36 @@ func WithLogger(l *zap.Logger) ServerOption {
 // same connectionID reconnects within that period, the session resumes
 // transparently.
 // Valid range: 0 (disabled) … no upper limit. Default is 0 (OnDisconnect fires immediately).
-func WithResumeWindow(d time.Duration) ServerOption {
+func WithResumeWindow(d time.Duration) HubOption {
 	if d < 0 {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
 	}
-	return func(c *serverConfig) { c.resumeWindow = d }
+	return func(c *hubConfig) { c.resumeWindow = d }
 }
 
 // WithUpgraderBufferSize sets the I/O buffer sizes for the WebSocket upgrader.
 // Larger buffers reduce per-write allocations for applications that send
 // large messages. Default: 1024 bytes for both read and write.
 // Panics if either size is not positive.
-func WithUpgraderBufferSize(readSize, writeSize int) ServerOption {
+func WithUpgraderBufferSize(readSize, writeSize int) HubOption {
 	if readSize <= 0 {
 		panic("wspulse: WithUpgraderBufferSize: readSize must be positive")
 	}
 	if writeSize <= 0 {
 		panic("wspulse: WithUpgraderBufferSize: writeSize must be positive")
 	}
-	return func(c *serverConfig) {
+	return func(c *hubConfig) {
 		c.upgraderReadBufferSize = readSize
 		c.upgraderWriteBufferSize = writeSize
 	}
 }
 
-// WithMetrics configures the MetricsCollector used by the Server.
+// WithMetrics configures the MetricsCollector used by the Hub.
 // Defaults to NoopCollector{} if not set.
 // Panics if collector is nil.
-func WithMetrics(collector MetricsCollector) ServerOption {
+func WithMetrics(collector MetricsCollector) HubOption {
 	if collector == nil {
 		panic("wspulse: WithMetrics: collector must not be nil")
 	}
-	return func(c *serverConfig) { c.metrics = collector }
+	return func(c *hubConfig) { c.metrics = collector }
 }

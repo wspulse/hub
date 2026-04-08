@@ -14,23 +14,23 @@ const (
 	DisconnectNormal DisconnectReason = "normal"
 
 	// DisconnectKick indicates the connection was terminated by
-	// an explicit Server.Kick() call.
+	// an explicit Hub.Kick() call.
 	DisconnectKick DisconnectReason = "kick"
 
 	// DisconnectGraceExpired indicates the resume window elapsed
 	// without the client reconnecting.
 	DisconnectGraceExpired DisconnectReason = "grace_expired"
 
-	// DisconnectServerClose indicates the connection was terminated
-	// because Server.Close() shut down the server.
-	DisconnectServerClose DisconnectReason = "server_close"
+	// DisconnectHubClose indicates the connection was terminated
+	// because Hub.Close() shut down the hub.
+	DisconnectHubClose DisconnectReason = "hub_close"
 
 	// DisconnectDuplicate indicates the connection was replaced by
 	// a new connection with the same connectionID.
 	DisconnectDuplicate DisconnectReason = "duplicate"
 )
 
-// MetricsCollector defines instrumentation hooks for wspulse server.
+// MetricsCollector defines instrumentation hooks for wspulse hub.
 // Each method corresponds to a single lifecycle or throughput event.
 //
 // Implementations must be safe for concurrent use. Methods are called from
@@ -42,7 +42,7 @@ const (
 //
 // Hooks are invoked synchronously on hot paths; implementations must
 // return quickly and must not panic. Implementations must not call back
-// into the same Server synchronously (e.g. Kick, Send, Broadcast) as
+// into the same Hub synchronously (e.g. Kick, Send, Broadcast) as
 // this can deadlock the hub event loop.
 //
 // For forward-compatible custom implementations, embed NoopCollector:

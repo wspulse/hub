@@ -13,7 +13,7 @@ import (
 	core "github.com/wspulse/core"
 )
 
-// Connection represents a logical WebSocket session managed by the Server.
+// Connection represents a logical WebSocket session managed by the Hub.
 // The underlying physical WebSocket may be transparently swapped on reconnect
 // when WithResumeWindow is configured. All exported methods are safe to call
 // concurrently.
@@ -80,7 +80,7 @@ type session struct {
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
 	closeOnce sync.Once
-	config    *serverConfig
+	config    *hubConfig
 }
 
 func (s *session) ID() string            { return s.id }

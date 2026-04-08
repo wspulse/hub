@@ -23,7 +23,7 @@ func acceptAll(r *http.Request) (roomID, connectionID string, err error) {
 
 func TestServer_Send_ErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Send("does-not-exist", wspulse.Frame{Event: "ping"})
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
@@ -31,7 +31,7 @@ func TestServer_Send_ErrConnectionNotFound(t *testing.T) {
 
 func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Kick("does-not-exist")
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
@@ -39,7 +39,7 @@ func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
 
 func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
 	connections := srv.GetConnections("no-such-room")
 	require.Empty(t, connections)
@@ -47,7 +47,7 @@ func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
 
 func TestServer_Close_SafeToCallTwice(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	srv.Close() // first call
 	srv.Close() // must not panic
 }
@@ -82,7 +82,7 @@ func TestWithHeartbeat_InvalidParams_Panics(t *testing.T) {
 func TestNewServer_NilConnect_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		_ = wspulse.NewServer(nil)
+		_ = wspulse.NewHub(nil)
 	})
 }
 
@@ -104,7 +104,7 @@ func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 
 func TestWithHeartbeat_ValidParams_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithHeartbeat(5*time.Second, 15*time.Second),
 	)
 	t.Cleanup(srv.Close)
@@ -126,7 +126,7 @@ func TestWithHeartbeat_PongExceedsMax_Panics(t *testing.T) {
 
 func TestWithWriteWait_ValidDuration_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithWriteWait(5*time.Second),
 	)
 	t.Cleanup(srv.Close)
@@ -148,7 +148,7 @@ func TestWithWriteWait_ExceedsMax_Panics(t *testing.T) {
 
 func TestWithMaxMessageSize_ValidSize_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithMaxMessageSize(4096),
 	)
 	t.Cleanup(srv.Close)
@@ -191,7 +191,7 @@ func TestWithResumeWindow_Negative_Panics(t *testing.T) {
 
 func TestWithResumeWindow_LargeValue_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithResumeWindow(10*time.Minute),
 	)
 	srv.Close()
@@ -199,7 +199,7 @@ func TestWithResumeWindow_LargeValue_Accepted(t *testing.T) {
 
 func TestWithCodec_ValidCodec_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithCodec(wspulse.JSONCodec),
 	)
 	t.Cleanup(srv.Close)
@@ -207,7 +207,7 @@ func TestWithCodec_ValidCodec_Accepted(t *testing.T) {
 
 func TestWithLogger_ValidLogger_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithLogger(zaptest.NewLogger(t)),
 	)
 	t.Cleanup(srv.Close)
@@ -217,7 +217,7 @@ func TestWithLogger_ValidLogger_Accepted(t *testing.T) {
 
 func TestServer_Broadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Broadcast("nonexistent-room", wspulse.Frame{Event: "msg"})
 	require.NoError(t, err)
@@ -225,47 +225,47 @@ func TestServer_Broadcast_EmptyRoom_NoError(t *testing.T) {
 
 // ── Kick and Broadcast during server shutdown ─────────────────────────────────
 
-func TestServer_Kick_AfterClose_ReturnsErrServerClosed(t *testing.T) {
+func TestServer_Kick_AfterClose_ReturnsErrHubClosed(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
-	require.ErrorIs(t, srv.Kick("any"), wspulse.ErrServerClosed)
+	require.ErrorIs(t, srv.Kick("any"), wspulse.ErrHubClosed)
 }
 
-// ── Send/Kick during hub close (both ErrServerClosed paths) ──────────────────
+// ── Send/Kick during hub close (both ErrHubClosed paths) ──────────────────
 
 func TestServer_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
 	// After close, hub maps are empty — returns ErrConnectionNotFound.
 	err := srv.Send("any", wspulse.Frame{Event: "x"})
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
-// TestServer_Broadcast_AfterClose verifies Broadcast returns ErrServerClosed
+// TestServer_Broadcast_AfterClose verifies Broadcast returns ErrHubClosed
 // when called after the server has been closed.
 func TestServer_Broadcast_AfterClose(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
 	err := srv.Broadcast("test-room", wspulse.Frame{Event: "hello"})
-	require.ErrorIs(t, err, wspulse.ErrServerClosed)
+	require.ErrorIs(t, err, wspulse.ErrHubClosed)
 }
 
-// TestServer_Kick_AfterClose verifies Kick returns ErrServerClosed
+// TestServer_Kick_AfterClose verifies Kick returns ErrHubClosed
 // when called after the server has been closed.
 func TestServer_Kick_AfterClose(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
 	err := srv.Kick("test-connection")
-	require.ErrorIs(t, err, wspulse.ErrServerClosed)
+	require.ErrorIs(t, err, wspulse.ErrHubClosed)
 }
 
 func TestWithOnTransportDrop_AcceptsNil(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithOnTransportDrop(nil),
 	)
 	t.Cleanup(srv.Close)
@@ -273,7 +273,7 @@ func TestWithOnTransportDrop_AcceptsNil(t *testing.T) {
 
 func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll,
+	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithOnTransportRestore(nil),
 	)
 	t.Cleanup(srv.Close)
@@ -282,20 +282,20 @@ func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
 func TestWithUpgraderBufferSize_Zero_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
+		wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
 	})
 }
 
 func TestWithUpgraderBufferSize_NegativeWriteSize_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
+		wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
 	})
 }
 
 func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll, wspulse.WithUpgraderBufferSize(4096, 4096))
+	srv := wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(4096, 4096))
 	t.Cleanup(srv.Close)
 }
 
@@ -305,7 +305,7 @@ func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
 // gate (no integration tag required).
 func TestServer_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
+	srv := wspulse.NewHub(func(r *http.Request) (string, string, error) {
 		return "", "", errors.New("internal: secret db details")
 	})
 	t.Cleanup(srv.Close)
