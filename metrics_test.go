@@ -46,8 +46,8 @@ func TestWithMetrics_NilPanics(t *testing.T) {
 
 func TestWithMetrics_DefaultIsNoop(t *testing.T) {
 	t.Parallel()
-	// Server should start and close cleanly without WithMetrics (uses NoopCollector).
-	srv := wspulse.NewServer(func(_ *http.Request) (string, string, error) {
+	// Hub should start and close cleanly without WithMetrics (uses NoopCollector).
+	srv := wspulse.NewHub(func(_ *http.Request) (string, string, error) {
 		return "room", "conn", nil
 	})
 	srv.Close()
@@ -55,7 +55,7 @@ func TestWithMetrics_DefaultIsNoop(t *testing.T) {
 
 func TestWithMetrics_CustomCollector_Accepted(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(_ *http.Request) (string, string, error) {
 			return "room", "", nil
 		},

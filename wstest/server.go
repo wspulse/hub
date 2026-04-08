@@ -12,12 +12,12 @@ import (
 	wspulse "github.com/wspulse/server"
 )
 
-// NewTestServer creates an in-process test server for use in application tests.
+// NewTestHub creates an in-process test server for use in application tests.
 // It returns the WebSocket URL (ws://...) ready for client.Dial.
 // The server and its HTTP listener are automatically cleaned up when the test ends.
-func NewTestServer(t testing.TB, connect wspulse.ConnectFunc, opts ...wspulse.ServerOption) string {
+func NewTestHub(t testing.TB, connect wspulse.ConnectFunc, opts ...wspulse.HubOption) string {
 	t.Helper()
-	srv := wspulse.NewServer(connect, opts...)
+	srv := wspulse.NewHub(connect, opts...)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(func() {
 		srv.Close()

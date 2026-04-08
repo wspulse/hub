@@ -11,8 +11,8 @@ import (
 	"github.com/wspulse/server/wstest"
 )
 
-func TestNewTestServer_ReturnsWSURL(t *testing.T) {
-	url := wstest.NewTestServer(t, func(r *http.Request) (string, string, error) {
+func TestNewTestHub_ReturnsWSURL(t *testing.T) {
+	url := wstest.NewTestHub(t, func(r *http.Request) (string, string, error) {
 		return "room", "", nil
 	})
 	require.True(t, strings.HasPrefix(url, "ws://"),

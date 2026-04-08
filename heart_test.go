@@ -19,7 +19,7 @@ import (
 
 // injectAndWait creates a mock transport, injects it into the server, and
 // waits for the onConnect callback to fire. Returns the mock transport.
-func injectAndWait(t *testing.T, srv wspulse.Server, connectionID, roomID string, connected chan struct{}) *mockTransport {
+func injectAndWait(t *testing.T, srv wspulse.Hub, connectionID, roomID string, connected chan struct{}) *mockTransport {
 	t.Helper()
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt)
@@ -32,7 +32,7 @@ func injectAndWait(t *testing.T, srv wspulse.Server, connectionID, roomID string
 func TestOnConnect_SendsFrame(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
 			_ = connection.Send(wspulse.Frame{Event: "welcome", Payload: []byte(`"hello"`)})
@@ -57,7 +57,7 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	received := make(chan wspulse.Frame, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -84,7 +84,7 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 func TestBroadcast_ReachesConnectedClient(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -109,7 +109,7 @@ func TestBroadcast_ReachesConnectedClient(t *testing.T) {
 func TestSend_DeliversFrameToConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -135,7 +135,7 @@ func TestOnDisconnect_CallbackFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -160,7 +160,7 @@ func TestKick_ClosesConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -183,7 +183,7 @@ func TestKick_ClosesConnection(t *testing.T) {
 func TestGetConnections_ReturnsRegisteredConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -206,7 +206,7 @@ func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	var connectCount atomic.Int32
 	connected := make(chan struct{}, 2)
 	kicked := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connectCount.Add(1)
@@ -245,7 +245,7 @@ func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 func TestConnectionDone_ClosedOnKick(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c
@@ -267,7 +267,7 @@ func TestConnectionDone_ClosedOnKick(t *testing.T) {
 
 func TestBroadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
 	err := srv.Broadcast("nonexistent-room", wspulse.Frame{Event: "msg"})
 	require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestMultipleRooms_BroadcastIsolation(t *testing.T) {
 	connectedB := make(chan struct{}, 1)
 
 	var connectCount atomic.Int32
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			n := connectCount.Add(1)
 			if n == 1 {
@@ -340,7 +340,7 @@ func TestShutdownFiresOnDisconnect(t *testing.T) {
 	disconnected := make(chan error, count)
 
 	connIndex := 0
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			connIndex++
 			return "room", fmt.Sprintf("conn-%d", connIndex), nil
@@ -363,7 +363,7 @@ func TestShutdownFiresOnDisconnect(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		err := requireReceive(t, disconnected)
-		assert.ErrorIs(t, err, wspulse.ErrServerClosed)
+		assert.ErrorIs(t, err, wspulse.ErrHubClosed)
 	}
 }
 
@@ -372,7 +372,7 @@ func TestShutdownFiresOnDisconnect(t *testing.T) {
 func TestConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c

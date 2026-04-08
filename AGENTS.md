@@ -13,10 +13,10 @@ making any changes.
 
 **Key files**:
 
-- `server.go` — public `Server` interface + `NewServer`
-- `hub.go` — single-goroutine event loop (all state mutations here)
+- `server.go` — public `Hub` interface + `NewHub`
+- `heart.go` — single-goroutine event loop (all state mutations here)
 - `session.go` — `Connection` interface, `readPump` / `writePump`, resume logic
-- `options.go` — `ServerOption` builders
+- `options.go` — `HubOption` builders
 - `resume.go` — ring buffer for session resumption
 - `errors.go` — sentinel errors
 - `doc/internals.md` — internal architecture
@@ -30,8 +30,8 @@ making any changes.
 
 1. **Read before write** — read the target file + `doc/internals.md` before any edit.
    For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
-2. **Hub serialization** — all session state mutations go through the hub's
-   event loop. Never mutate session state from outside the hub goroutine.
+2. **Heart serialization** — all session state mutations go through the heart's
+   event loop. Never mutate session state from outside the heart goroutine.
 3. **Goroutine lifecycle** — every goroutine must have an explicit exit
    condition. `Close()` must not leak goroutines.
 4. **No breaking changes without version bump.**

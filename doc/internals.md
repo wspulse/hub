@@ -25,7 +25,7 @@ Every accepted WebSocket connection spawns exactly **two goroutines**:
 ```
 ServeHTTP
   ├─ go writePump(transport) — drains session.send channel, drives Ping heartbeat
-  └─ go readPump(transport, hub) — reads inbound frames, calls OnMessage, signals hub on exit
+  └─ go readPump(transport, heart) — reads inbound frames, calls OnMessage, signals heart on exit
 ```
 
 Both goroutines are owned by the `session` value. Neither goroutine is
@@ -36,7 +36,7 @@ accessible to the application layer; the `Connection` interface exposes only
 
 - `readPump` owns the transport-died signal: when `ReadMessage()` returns an
   error (normal close, network drop, or read deadline exceeded) `readPump`
-  sends a `transportDied` message to the hub and exits.
+  sends a `transportDied` message to the heart and exits.
 - `writePump` owns the TCP connection close call: it calls `transport.Close()` on
   exit to ensure the underlying socket is always released.
 - `session.done` is a `chan struct{}` closed exactly once (via `closeOnce`) by
@@ -69,10 +69,10 @@ completely separate from application JSON messages.
 Configuring non-default values:
 
 ```go
-server.NewServer(connect,
-    server.WithHeartbeat(30*time.Second, 90*time.Second),  // pingPeriod, pongWait
-    server.WithWriteWait(15*time.Second),
-    server.WithMaxMessageSize(4096),
+wspulse.NewHub(connect,
+    wspulse.WithHeartbeat(30*time.Second, 90*time.Second),  // pingPeriod, pongWait
+    wspulse.WithWriteWait(15*time.Second),
+    wspulse.WithMaxMessageSize(4096),
 )
 ```
 
@@ -95,14 +95,14 @@ server.NewServer(connect,
 
 4. **Timeout disconnect** — If no Pong arrives within `pongWait`, `ReadMessage()`
    returns an `i/o timeout` error. `readPump` exits, unregisters the connection
-   from the hub, and the `OnDisconnect` callback fires.
+   from the heart, and the `OnDisconnect` callback fires.
 
 ---
 
 ## 3. Backpressure and Send Buffer
 
 Each session maintains a `session.send chan []byte` with a configurable
-depth (default **256**). When `Server.Broadcast` or `Server.Send` is called:
+depth (default **256**). When `Hub.Broadcast` or `Hub.Send` is called:
 
 1. The encoded frame bytes are sent to `session.send` via a non-blocking select.
 2. If the channel is **full**, `ErrSendBufferFull` is returned to the caller
@@ -114,7 +114,7 @@ depth (default **256**). When `Server.Broadcast` or `Server.Send` is called:
    frames are buffered to an in-memory `ringBuffer` instead of the send channel.
    These frames are replayed when the client reconnects.
 
-This ensures a slow or lagging connection cannot block the hub event loop or
+This ensures a slow or lagging connection cannot block the heart event loop or
 stall broadcasts to other healthy connections.
 
 If the application needs reliable delivery for a specific connection, it should
@@ -130,21 +130,21 @@ Normal and abnormal teardown follow the same cleanup path:
 
 ```
 cause (close frame / network drop / ReadDeadline)
-  → readPump: ReadMessage() returns error, sends transportDiedMessage to hub
-  → hub: if resumeWindow > 0 → suspend session (start grace timer)
-         if resumeWindow == 0 → remove session, call OnDisconnect
+  → readPump: ReadMessage() returns error, sends transportDiedMessage to heart
+  → heart: if resumeWindow > 0 → suspend session (start grace timer)
+           if resumeWindow == 0 → remove session, call OnDisconnect
   → session.Close() (via closeOnce): closes done channel
   → writePump: selects <-pumpQuit or <-session.done, stops ticker,
     calls transport.Close()
 ```
 
-Explicit teardown via `Server.Kick(connectionID)` takes a different path — the
-kick request is routed through the hub to ensure serialized cleanup (see
+Explicit teardown via `Hub.Kick(connectionID)` takes a different path — the
+kick request is routed through the heart to ensure serialized cleanup (see
 §5 "Kick Bypass" for details).
 
 The `closeOnce sync.Once` guard ensures `close(done)` executes exactly once
 regardless of which side (readPump, writePump, grace timer expiry, or an
-explicit `Server.Kick` call) initiates the teardown.
+explicit `Hub.Kick` call) initiates the teardown.
 
 ---
 
@@ -182,7 +182,7 @@ Connected → Closed    : duplicate connectionID arrives (old session kicked, on
 Suspended → Connected : same connectionID reconnect (cancel timer, replay buffer, onTransportRestore fires)
 Suspended → Closed    : timer expires (onDisconnect fires, session destroyed)
 Suspended → Closed    : Connection.Close() called (cancel timer, onDisconnect fires immediately)
-Suspended → Closed    : Kick() or server.Close() (cancel timer, onDisconnect fires immediately)
+Suspended → Closed    : Kick() or hub.Close() (cancel timer, onDisconnect fires immediately)
 
 Closed → [*]
 ```
@@ -191,16 +191,16 @@ Closed → [*]
 
 ```
 WS1 connection drops
-  → WS1 sends transportDiedMessage(session, err) to Hub
-  → Hub detaches WS1, starts resumeWindow timer
+  → WS1 sends transportDiedMessage(session, err) to Heart
+  → Heart detaches WS1, starts resumeWindow timer
   → go onTransportDrop(session, err)
   → Session state = suspended, frames buffered to ringBuffer
 
 WS2 client reconnects with same connectionID
-  → WS2 sends register(connectionID, transport) to Hub
-  → Hub cancels timer
-  → Hub attaches WS2, drains ringBuffer to send channel
-  → Hub starts writePump(WS2) + readPump(WS2)
+  → WS2 sends register(connectionID, transport) to Heart
+  → Heart cancels timer
+  → Heart attaches WS2, drains ringBuffer to send channel
+  → Heart starts writePump(WS2) + readPump(WS2)
   → onTransportRestore fires; no onConnect / onDisconnect fired
 ```
 
@@ -211,7 +211,7 @@ connection.
 ### Resume Buffer
 
 During the suspended state, frames sent via `session.Send()` or
-`Server.Broadcast()` are stored in an in-memory `ringBuffer` with a capacity
+`Hub.Broadcast()` are stored in an in-memory `ringBuffer` with a capacity
 equal to `sendBufferSize` (default 256 frames). When the buffer is full, the
 oldest frame is dropped (same backpressure strategy as the send channel during
 normal operation).
@@ -236,17 +236,17 @@ attempt multiple retries within this window.
 
 ### Kick Bypass
 
-`Server.Kick(connectionID)` always destroys the session immediately, bypassing
+`Hub.Kick(connectionID)` always destroys the session immediately, bypassing
 the resume window. Kick is an explicit application-layer action that signals
 intentional removal, not a transient network failure.
 
-#### Hub-routed Kick
+#### Heart-routed Kick
 
-Kick is routed through the hub's event loop via a `kickRequest` channel.
+Kick is routed through the heart's event loop via a `kickRequest` channel.
 This ensures that map removal, `session.Close()`, and the `OnDisconnect`
 callback are all serialized with other state mutations (register,
 transportDied, graceExpired). Without this, calling `Close()` directly on a
-**suspended** session would close `session.done` but leave the session in hub
+**suspended** session would close `session.done` but leave the session in heart
 maps until the grace timer fires.
 
 To prevent `Kick` from double-firing `onDisconnect` when a grace timer happens
@@ -255,15 +255,15 @@ to fire simultaneously, `removeSession` (called by `handleKick`) bumps
 `handleGraceExpired`'s epoch check.
 
 ```
-Kick(connectionID) → kickRequest{connectionID, result} → hub.kick channel
-hub.run() selects kickRequest
+Kick(connectionID) → kickRequest{connectionID, result} → heart.kick channel
+heart.run() selects kickRequest
   → handleKick: removeSession + session.Close() + go onDisconnect()
   → writes nil to result channel
 Kick() returns nil
 ```
 
-If the hub has already shut down (`<-hub.done`), `Kick` returns
-`ErrServerClosed` without blocking.
+If the heart has already shut down (`<-heart.done`), `Kick` returns
+`ErrHubClosed` without blocking.
 
 ---
 
@@ -276,12 +276,12 @@ that discards all events with minimal overhead.
 ### Configuration
 
 ```go
-wspulse.NewServer(connect,
+wspulse.NewHub(connect,
     wspulse.WithMetrics(myCollector),  // custom implementation
 )
 ```
 
-If `WithMetrics` is not called, the server uses `NoopCollector`.
+If `WithMetrics` is not called, the Hub uses `NoopCollector`.
 
 ### Interface
 
@@ -293,17 +293,17 @@ must be safe for concurrent use.
 
 | Method                  | Called from         |
 | ----------------------- | ------------------- |
-| `RoomCreated`           | hub goroutine       |
-| `RoomDestroyed`         | hub goroutine       |
-| `ConnectionOpened`      | hub goroutine       |
-| `ConnectionClosed`      | hub goroutine       |
-| `ResumeAttempt`         | hub goroutine       |
-| `MessageBroadcast`      | hub goroutine       |
+| `RoomCreated`           | heart goroutine       |
+| `RoomDestroyed`         | heart goroutine       |
+| `ConnectionOpened`      | heart goroutine       |
+| `ConnectionClosed`      | heart goroutine       |
+| `ResumeAttempt`         | heart goroutine       |
+| `MessageBroadcast`      | heart goroutine       |
 | `MessageReceived`       | readPump goroutine  |
 | `PongTimeout`           | readPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
-| `FrameDropped`          | hub goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
+| `FrameDropped`          | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
 
 ### Connection duration
 
