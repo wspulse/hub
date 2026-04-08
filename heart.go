@@ -90,7 +90,7 @@ func newHeart(config *hubConfig) *heart {
 	}
 }
 
-// run is the heart.s main event loop. It serializes all state mutations.
+// run is the heart's main event loop. It serializes all state mutations.
 // Exits when done is closed (via Hub.Close()).
 func (h *heart) run() {
 	for {

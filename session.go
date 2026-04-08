@@ -251,7 +251,7 @@ func (s *session) Close() error {
 // state to stateConnected under the same lock acquisition. This ensures
 // all pre-resume frames precede post-resume frames in s.send.
 //
-// Must be called from the heart.s event loop (single-goroutine serialization).
+// Must be called from the heart's event loop (single-goroutine serialization).
 func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete func()) {
 	s.mu.Lock()
 
@@ -389,7 +389,7 @@ func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete 
 // Returns (0, false) if the session is already closed — callers must not
 // set a grace timer in that case.
 //
-// Must be called from the heart.s event loop.
+// Must be called from the heart's event loop.
 func (s *session) detachWS() (epoch uint64, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

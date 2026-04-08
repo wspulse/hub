@@ -205,7 +205,7 @@ func WithCodec(codec Codec) HubOption {
 // Defaults to accepting all origins (permissive — tighten this in production).
 // Panics if fn is nil; pass the default (accept-all) explicitly if desired:
 //
-//	server.WithCheckOrigin(func(*http.Request) bool { return true })
+//	wspulse.WithCheckOrigin(func(*http.Request) bool { return true })
 func WithCheckOrigin(fn func(r *http.Request) bool) HubOption {
 	if fn == nil {
 		panic("wspulse: WithCheckOrigin: fn must not be nil")

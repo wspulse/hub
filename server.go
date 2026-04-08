@@ -42,7 +42,7 @@ type internalHub struct {
 	heart     *heart
 	upgrader  websocket.Upgrader
 	closeOnce sync.Once
-	heartDone chan struct{} // closed when the hub goroutine fully exits
+	heartDone chan struct{} // closed when the heart goroutine (event loop) fully exits
 }
 
 // verify Hub interface is satisfied at compile time.
@@ -101,7 +101,7 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Quick bail — hub is shutting down; don't upgrade or enqueue.
 	if s.heart.stopped.Load() {
 		s.config.logger.Warn("wspulse: ServeHTTP rejected — hub closed")
-		http.Error(w, "server closed", http.StatusServiceUnavailable)
+		http.Error(w, "hub closed", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -182,7 +182,7 @@ func (s *internalHub) Broadcast(roomID string, f Frame) error {
 // Kick forcefully closes the connection identified by connectionID.
 // Always bypasses the resume window — the session is destroyed
 // immediately without entering the suspended state.
-// Routed through the hub so cleanup is serialized with other state mutations.
+// Routed through heart so cleanup is serialized with other state mutations.
 func (s *internalHub) Kick(connectionID string) error {
 	result := make(chan error, 1)
 	select {
@@ -203,8 +203,8 @@ func (s *internalHub) GetConnections(roomID string) []Connection {
 	return s.heart.getConnections(roomID)
 }
 
-// Close gracefully shuts down the Hub and blocks until the hub
-// goroutine has fully exited and all managed resources are released.
+// Close gracefully shuts down the Hub and blocks until the internal
+// event loop has fully exited and all managed resources are released.
 // Safe to call multiple times and from multiple goroutines; only the
 // first call triggers shutdown, but all calls block until completion.
 func (s *internalHub) Close() {

@@ -34,7 +34,7 @@ const (
 // Each method corresponds to a single lifecycle or throughput event.
 //
 // Implementations must be safe for concurrent use. Methods are called from
-// the hub goroutine, readPump goroutines, and writePump goroutines.
+// the heart goroutine, readPump goroutines, and writePump goroutines.
 //
 // All methods are fire-and-forget: they do not return values. If the
 // underlying metrics backend encounters an error, the implementation
@@ -43,7 +43,7 @@ const (
 // Hooks are invoked synchronously on hot paths; implementations must
 // return quickly and must not panic. Implementations must not call back
 // into the same Hub synchronously (e.g. Kick, Send, Broadcast) as
-// this can deadlock the hub event loop.
+// this can deadlock the heart event loop.
 //
 // For forward-compatible custom implementations, embed NoopCollector:
 //

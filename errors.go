@@ -20,7 +20,7 @@ var (
 
 	// ErrHubClosed is returned by Hub.Broadcast (and potentially
 	// other methods) when the Hub has already been shut down via Close().
-	ErrHubClosed = errors.New("wspulse: server is closed")
+	ErrHubClosed = errors.New("wspulse: hub is closed")
 )
 
 // PanicError wraps a panic recovered from an OnMessage callback.
