@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **BREAKING**: `NewTestServer` moved from the main `wspulse` package to `server/wstest` sub-package. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestServer(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
+- **BREAKING**: `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/server/wstest`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestServer(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
 
 ### Removed
 
