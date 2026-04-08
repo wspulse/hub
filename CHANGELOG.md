@@ -7,15 +7,7 @@
 - Renamed `Server` interface to `Hub`, `NewServer()` to `NewHub()`, `ServerOption` to `HubOption`
 - Renamed `ErrServerClosed` to `ErrHubClosed`, `DisconnectServerClose` to `DisconnectHubClose` (string value: `"hub_close"`)
 - Renamed internal event loop from `hub` to `heart` (`hub.go` → `heart.go`)
-- `wstest.NewTestServer()` renamed to `wstest.NewTestHub()`
-
-### Changed
-
-- **BREAKING**: `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/server/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
-
-### Removed
-
-- `NewTestServer` from the main package (use `wstest.NewTestHub` instead)
+- `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/server/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
 
 ---
 
