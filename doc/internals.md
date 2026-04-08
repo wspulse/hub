@@ -281,7 +281,7 @@ wspulse.NewHub(connect,
 )
 ```
 
-If `WithMetrics` is not called, the hub uses `NoopCollector`.
+If `WithMetrics` is not called, the Hub uses `NoopCollector`.
 
 ### Interface
 
