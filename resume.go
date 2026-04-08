@@ -4,6 +4,14 @@ package wspulse
 // Used by session to buffer outbound frames while the WebSocket transport
 // is disconnected (during the resume window).
 //
+// The resume buffer requires two specific semantics:
+//   - Head-drop: when full, the oldest frame is silently overwritten to
+//     make room for the newest, keeping the most recent N frames available
+//     for replay.
+//   - Batch drain: on reconnect, all buffered frames are read out in FIFO
+//     order as a single slice so they can be replayed atomically before
+//     the new writePump starts.
+//
 // Not safe for concurrent use — callers must hold a lock.
 type ringBuffer struct {
 	data [][]byte

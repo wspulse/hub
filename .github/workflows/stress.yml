@@ -1,0 +1,13 @@
+name: Weekly Stress Test
+
+on:
+  schedule:
+    - cron: "0 19 * * 4" # UTC+8 Friday 03:00
+  workflow_dispatch:
+
+jobs:
+  stress:
+    uses: wspulse/.github/.github/workflows/go-stress.yml@main
+    permissions:
+      contents: read
+      issues: write

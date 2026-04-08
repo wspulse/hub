@@ -5,8 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	core "github.com/wspulse/core"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -17,7 +18,7 @@ import (
 type registerMessage struct {
 	connectionID string
 	roomID       string
-	transport    *websocket.Conn
+	transport    core.Transport
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
@@ -25,8 +26,8 @@ type registerMessage struct {
 // destroy it (resume disabled / grace expired).
 type transportDiedMessage struct {
 	session   *session
-	transport *websocket.Conn // the specific transport that died
-	err       error           // nil for normal closure
+	transport core.Transport // the specific transport that died
+	err       error          // nil for normal closure
 }
 
 // graceExpiredMessage is sent by a time.AfterFunc when the resume window elapses
@@ -141,8 +142,8 @@ func (h *hub) handleRegister(message registerMessage) {
 			if fn := h.config.onTransportRestore; fn != nil {
 				onResume = func() { fn(existing) }
 			}
-			existing.attachWS(message.transport, h, onResume)
 			h.config.metrics.ResumeAttempt(existing.roomID, existing.id)
+			existing.attachWS(message.transport, h, onResume)
 			h.config.logger.Info("wspulse: session resumed",
 				zap.String("conn_id", message.connectionID),
 			)
@@ -269,10 +270,12 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 		epoch, ok := target.detachWS()
 		if !ok {
 			// Session was concurrently closed (e.g. via external Close()).
-			// State is already stateClosed; nothing more to do.
+			// Close() only sets stateClosed — it does not remove the session
+			// from hub maps or fire onDisconnect. Do that here.
 			h.config.logger.Debug("wspulse: detachWS returned not-ok (session closed concurrently)",
 				zap.String("conn_id", target.id),
 			)
+			h.disconnectSession(target, message.err, DisconnectNormal)
 			return
 		}
 		timer := h.config.clock.AfterFunc(h.config.resumeWindow, func() {
@@ -291,7 +294,11 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 			h.config.logger.Info("wspulse: suspended session closed by application (race path)",
 				zap.String("conn_id", target.id),
 			)
-			h.disconnectSession(target, nil, DisconnectNormal)
+			// Pass message.err (not nil): OnTransportDrop was never called
+			// because detachWS succeeded but Close() raced in before the
+			// timer was assigned. The transport error must reach OnDisconnect
+			// so it is delivered exactly once across the two callbacks.
+			h.disconnectSession(target, message.err, DisconnectNormal)
 			return
 		}
 		target.graceTimer = timer

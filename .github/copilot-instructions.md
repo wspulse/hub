@@ -20,9 +20,8 @@ wspulse/server is a **minimal, production-ready WebSocket server library** for G
 ```bash
 make fmt              # format (gofmt + goimports)
 make lint             # vet + golangci-lint
-make test             # unit tests with race detector
-make test-integration # all tests (unit + integration) with race detector
-make check            # fmt + lint + unit test (pre-commit gate)
+make test             # all tests (unit + component) with race detector
+make check            # fmt + lint + test (pre-commit gate)
 make bench            # benchmarks with memory stats
 make test-cover       # all tests with coverage report → coverage.html
 make tidy             # tidy module dependencies
@@ -47,8 +46,9 @@ make tidy             # tidy module dependencies
     - `fix/<name>` — quick fix (e.g. config, docs, CI)
     - `chore/<name>` — maintenance, CI/CD, dependencies, docs
     - CI triggers on all branch prefixes above and on PRs targeting `main`/`develop`. Tags do **not** trigger CI (the tag is created after CI already passed). Open a PR into `develop`; `develop` requires status checks to pass.
+  - **Pull request description**: must follow the repo's `.github/PULL_REQUEST_TEMPLATE.md`. Fill in every section (Summary, Changes, Checklist). Do not invent custom formats.
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
-  - **Unit vs integration**: integration tests (requiring a WebSocket connection) use `//go:build integration` and live in `*_integration_test.go` files. `make check` runs unit tests only by default; set `INCLUDE_INTEGRATION=1` to include integration tests.
+  - **Component tests**: tests use mock transports (`mockTransport`) via `InjectTransport` — no real WebSocket connections needed. All tests run with `make test`.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
   - **Benchmarks**: changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Verify with `make bench`.
 - **API compatibility**:
@@ -58,6 +58,18 @@ make tidy             # tidy module dependencies
 - **Error format**: wrap errors as `fmt.Errorf("wspulse: <context>: %w", err)`; define sentinel errors as `errors.New("wspulse: <description>")`.
 - **Dependency policy**: prefer stdlib; justify any new external dependency explicitly in the PR description.
 - **File encoding**: all files must be UTF-8 without BOM. Do not use any other encoding.
+
+## Feature Workflow
+
+All new features and design changes follow this process — do not skip steps:
+
+1. **Plan** — write idea to `doc/local/plan/<name>.md` (local only, git-ignored)
+2. **Quick discussion** — feasibility + value check
+3. **Go / No-go** — kill or proceed
+4. **Layer check** — transport layer (wspulse implements) or application layer (write docs recipe instead)
+5. **Issue** — repo-scoped work: open issue on this repo. Cross-repo/global work: open issue on [`wspulse/.github`](https://github.com/wspulse/.github). Include summary, scope, impact assessment, priority label + milestone
+6. **Design discussion** — API surface, cross-SDK parity, contract/protocol updates, edge cases
+7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template. **Repo-scoped**: link PR to the issue. **Global**: each PR mentions the global issue (e.g., `wspulse/.github#N`); after opening a PR, comment on the global issue with the PR link
 
 ## Critical Rules
 
@@ -76,10 +88,9 @@ make tidy             # tidy module dependencies
     6. If you are about to edit production code and no failing test exists yet — stop and go back to step 1.
 8. **STOP — before every commit, verify this checklist:**
     1. Run `make check` (fmt → lint → test) and confirm it passes. Skip if the commit contains only non-code changes (e.g. documentation, comments, Markdown).
-    2. Run GitHub Copilot code review (`github.copilot.chat.review.changes`) on the working-tree diff and resolve every comment before proceeding.
-    3. Commit message follows [commit-message-instructions.md](instructions/commit-message-instructions.md): correct type, subject ≤ 50 chars, numbered body items stating reason → change.
-    4. This commit contains exactly one logical change — no unrelated modifications.
-    5. If any item fails — fix it before committing.
+    2. Commit message follows [commit-message-instructions.md](instructions/commit-message-instructions.md): correct type, subject ≤ 50 chars, numbered body items stating reason → change.
+    3. This commit contains exactly one logical change — no unrelated modifications.
+    4. If any item fails — fix it before committing.
 9. **Accuracy** — if you have questions or need clarification, ask the user. Do not make assumptions without confirming.
 10. **Language consistency** — when the user writes in Traditional Chinese, respond in Traditional Chinese; otherwise respond in English.
 11. **Panic policy — fail early, never at steady-state runtime** — Enforce errors at the earliest possible phase:

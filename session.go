@@ -9,6 +9,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	core "github.com/wspulse/core"
 )
 
 // Connection represents a logical WebSocket session managed by the Server.
@@ -66,14 +68,14 @@ type session struct {
 	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex      // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    *websocket.Conn // current physical connection; nil when suspended
-	pumpQuit     chan struct{}   // closed to stop the current writePump
-	pumpDone     chan struct{}   // closed by writePump on exit
-	graceTimer   *time.Timer     // resume window timer; nil when not suspended
-	state        sessionState    // current lifecycle state
-	resumeBuffer *ringBuffer     // nil when resume is disabled
-	suspendEpoch uint64          // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex     // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport // current physical connection; nil when suspended
+	pumpQuit     chan struct{}  // closed to stop the current writePump
+	pumpDone     chan struct{}  // closed by writePump on exit
+	graceTimer   *time.Timer    // resume window timer; nil when not suspended
+	state        sessionState   // current lifecycle state
+	resumeBuffer *ringBuffer    // nil when resume is disabled
+	suspendEpoch uint64         // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -250,7 +252,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the hub's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport *websocket.Conn, h *hub, onResumeComplete func()) {
+func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump pair if still running.
@@ -411,7 +413,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the hub that this transport
 // has died. If the hub is shutting down, cleanup is handled inline.
-func (s *session) readPump(transport *websocket.Conn, h *hub) {
+func (s *session) readPump(transport core.Transport, h *hub) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -458,17 +460,13 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 			if errors.As(err, &ne) && ne.Timeout() {
 				s.config.metrics.PongTimeout(s.roomID, s.id)
 			}
-			if websocket.IsUnexpectedCloseError(err,
-				websocket.CloseGoingAway,
-				websocket.CloseNormalClosure,
-				websocket.CloseAbnormalClosure,
-			) {
-				readErr = err
-				s.config.logger.Warn("wspulse: unexpected close", zap.String("conn_id", s.id), zap.Error(err))
-			} else {
+			if isNormalClose(err) {
 				s.config.logger.Debug("wspulse: connection closed normally",
 					zap.String("conn_id", s.id),
 				)
+			} else {
+				readErr = err
+				s.config.logger.Warn("wspulse: unexpected close", zap.String("conn_id", s.id), zap.Error(err))
 			}
 			return
 		}
@@ -484,13 +482,43 @@ func (s *session) readPump(transport *websocket.Conn, h *hub) {
 	}
 }
 
+// isNormalClose reports whether err represents an expected, orderly
+// connection close. When true, OnDisconnect receives a nil error.
+//
+// Normal close conditions:
+//   - net.ErrClosed: the transport was closed by the local writePump defer.
+//   - *websocket.CloseError with code 1000 (CloseNormalClosure):
+//     remote sent a standard close frame.
+//   - *websocket.CloseError with code 1001 (CloseGoingAway):
+//     remote is shutting down (e.g. browser tab closed).
+//   - *websocket.CloseError with code 1006 (CloseAbnormalClosure):
+//     TCP connection dropped without a close frame (e.g. network change,
+//     NAT timeout). Treated as normal because session resumption handles
+//     transient disconnects transparently — OnDisconnect only fires if
+//     the client fails to reconnect within the resume window.
+//
+// Everything else is abnormal and propagated to OnDisconnect as a
+// non-nil error: I/O timeouts, protocol errors, and other read failures.
+func isNormalClose(err error) bool {
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var ce *websocket.CloseError
+	if errors.As(err, &ce) {
+		return ce.Code == websocket.CloseNormalClosure ||
+			ce.Code == websocket.CloseGoingAway ||
+			ce.Code == websocket.CloseAbnormalClosure
+	}
+	return false
+}
+
 // writePump drains the send channel and drives the Ping heartbeat on the transport.
 // writePump is the sole goroutine that writes to the transport. On exit it closes
 // the underlying TCP connection so that readPump's ReadMessage unblocks.
 //
 // pumpQuit is closed when this pump should stop (reconnect or session close).
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(transport *websocket.Conn, pumpQuit, pumpDone chan struct{}) {
+func (s *session) writePump(transport core.Transport, pumpQuit, pumpDone chan struct{}) {
 	ticker := s.config.clock.NewTicker(s.config.pingPeriod)
 	defer func() {
 		ticker.Stop()
