@@ -13,7 +13,7 @@ import (
 // ── internal message types ────────────────────────────────────────────────────
 
 // registerMessage is sent by ServeHTTP after upgrading a WebSocket connection.
-// The hub either creates a new session or attaches the transport to an existing
+// The heart either creates a new session or attaches the transport to an existing
 // suspended session (resume).
 type registerMessage struct {
 	connectionID string
@@ -22,7 +22,7 @@ type registerMessage struct {
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
-// The hub decides whether to suspend the session (resume enabled) or
+// The heart decides whether to suspend the session (resume enabled) or
 // destroy it (resume disabled / grace expired).
 type transportDiedMessage struct {
 	session   *session
@@ -45,21 +45,21 @@ type broadcastMessage struct {
 }
 
 // kickRequest is sent by Hub.Kick to terminate a session.
-// Routed through the hub so that map removal, session close, and
+// Routed through the heart so that map removal, session close, and
 // onDisconnect are serialized with all other state mutations.
 type kickRequest struct {
 	connectionID string
 	result       chan error
 }
 
-// ── hub ───────────────────────────────────────────────────────────────────────
+// ── heart ───────────────────────────────────────────────────────────────────────
 
-// hub is the single-goroutine event loop that owns all room and session state.
+// heart is the single-goroutine event loop that owns all room and session state.
 // External callers interact through channels or mu-guarded read helpers.
 //
 // All mutations are serialized inside run()'s select loop.
 // h.mu (RWMutex) lets external goroutines read rooms/connectionsByID lock-free.
-type hub struct {
+type heart struct {
 	rooms           map[string]map[string]*session // roomID → connectionID → session
 	connectionsByID map[string]*session            // connectionID → session (flat index)
 
@@ -76,8 +76,8 @@ type hub struct {
 	config  *hubConfig
 }
 
-func newHub(config *hubConfig) *hub {
-	return &hub{
+func newHeart(config *hubConfig) *heart {
+	return &heart{
 		rooms:           make(map[string]map[string]*session),
 		connectionsByID: make(map[string]*session),
 		register:        make(chan registerMessage, 64),
@@ -90,9 +90,9 @@ func newHub(config *hubConfig) *hub {
 	}
 }
 
-// run is the hub's main event loop. It serializes all state mutations.
+// run is the heart.s main event loop. It serializes all state mutations.
 // Exits when done is closed (via Hub.Close()).
-func (h *hub) run() {
+func (h *heart) run() {
 	for {
 		select {
 		case message := <-h.register:
@@ -120,7 +120,7 @@ func (h *hub) run() {
 // handleRegister processes a new WebSocket connection.
 // If an existing suspended session matches the connectionID, the transport is swapped in
 // (session resume). Otherwise a new session is created.
-func (h *hub) handleRegister(message registerMessage) {
+func (h *heart) handleRegister(message registerMessage) {
 	h.mu.RLock()
 	existing, exists := h.connectionsByID[message.connectionID]
 	h.mu.RUnlock()
@@ -157,7 +157,7 @@ func (h *hub) handleRegister(message registerMessage) {
 			h.disconnectSession(existing, ErrDuplicateConnectionID, DisconnectDuplicate)
 
 		case stateClosed:
-			// Close() was called externally before the hub processed the
+			// Close() was called externally before the heart processed the
 			// resulting cleanup message (graceExpired or transportDied).
 			// Fire onDisconnect now; those paths will see the session is
 			// no longer registered and skip.
@@ -211,7 +211,7 @@ func (h *hub) handleRegister(message registerMessage) {
 // handleTransportDied processes a dead WebSocket transport.
 // If resume is enabled and the session state is stateConnected, transition
 // to stateSuspended and start the grace timer. Otherwise destroy the session.
-func (h *hub) handleTransportDied(message transportDiedMessage) {
+func (h *heart) handleTransportDied(message transportDiedMessage) {
 	target := message.session
 
 	// Stale notification: the ws that died is no longer the current ws
@@ -271,7 +271,7 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 		if !ok {
 			// Session was concurrently closed (e.g. via external Close()).
 			// Close() only sets stateClosed — it does not remove the session
-			// from hub maps or fire onDisconnect. Do that here.
+			// from heart maps or fire onDisconnect. Do that here.
 			h.config.logger.Debug("wspulse: detachWS returned not-ok (session closed concurrently)",
 				zap.String("conn_id", target.id),
 			)
@@ -325,8 +325,8 @@ func (h *hub) handleTransportDied(message transportDiedMessage) {
 // handleGraceExpired destroys a session whose resume window has elapsed
 // without reconnection. Also handles the case where the application called
 // Connection.Close() while the session was suspended — the session is in
-// stateClosed but still registered in the hub maps.
-func (h *hub) handleGraceExpired(message graceExpiredMessage) {
+// stateClosed but still registered in the heart maps.
+func (h *heart) handleGraceExpired(message graceExpiredMessage) {
 	target := message.session
 
 	target.mu.Lock()
@@ -371,8 +371,8 @@ func (h *hub) handleGraceExpired(message graceExpiredMessage) {
 }
 
 // handleKick removes a session, closes it, and fires onDisconnect.
-// Serialized inside the hub so suspended sessions are cleaned up correctly.
-func (h *hub) handleKick(request kickRequest) {
+// Serialized inside the heart so suspended sessions are cleaned up correctly.
+func (h *heart) handleKick(request kickRequest) {
 	h.mu.RLock()
 	target, exists := h.connectionsByID[request.connectionID]
 	h.mu.RUnlock()
@@ -395,8 +395,8 @@ func (h *hub) handleKick(request kickRequest) {
 
 // handleBroadcast fans out pre-encoded data to every session in the room.
 // Uses h.scratch to avoid allocating a snapshot slice per broadcast.
-// Safe because the hub event loop is single-threaded.
-func (h *hub) handleBroadcast(message broadcastMessage) {
+// Safe because the heart event loop is single-threaded.
+func (h *heart) handleBroadcast(message broadcastMessage) {
 	h.mu.RLock()
 	room := h.rooms[message.roomID]
 	h.scratch = h.scratch[:0]
@@ -439,10 +439,10 @@ func (h *hub) handleBroadcast(message broadcastMessage) {
 	}
 }
 
-// disconnectSession removes the session from hub maps, closes it, and fires
+// disconnectSession removes the session from heart maps, closes it, and fires
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
-func (h *hub) disconnectSession(target *session, err error, reason DisconnectReason) {
+func (h *heart) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
 	_ = target.Close()
@@ -451,8 +451,8 @@ func (h *hub) disconnectSession(target *session, err error, reason DisconnectRea
 	}
 }
 
-// removeSession removes session from the hub maps and cancels any grace timer.
-func (h *hub) removeSession(target *session) {
+// removeSession removes session from the heart maps and cancels any grace timer.
+func (h *heart) removeSession(target *session) {
 	target.cancelGraceTimer()
 
 	var roomDestroyed bool
@@ -474,7 +474,7 @@ func (h *hub) removeSession(target *session) {
 }
 
 // shutdown closes every active session. Called once by run() when done fires.
-func (h *hub) shutdown() {
+func (h *heart) shutdown() {
 	// Mark stopped before draining so that concurrent ServeHTTP calls
 	// bail out early instead of pushing into the register channel.
 	h.stopped.Store(true)
@@ -486,7 +486,7 @@ func (h *hub) shutdown() {
 	for _, room := range h.rooms {
 		sessionCount += len(room)
 	}
-	h.config.logger.Info("wspulse: hub shutting down",
+	h.config.logger.Info("wspulse: heart shutting down",
 		zap.Int("active_sessions", sessionCount),
 	)
 	type closedInfo struct {
@@ -536,20 +536,20 @@ drained:
 			go fn(s, ErrHubClosed)
 		}
 	}
-	h.config.logger.Info("wspulse: hub shutdown complete",
+	h.config.logger.Info("wspulse: heart shutdown complete",
 		zap.Int("disconnected", len(disconnected)),
 	)
 }
 
 // get returns the session for connectionID, or nil. O(1) via flat index.
-func (h *hub) get(connectionID string) *session {
+func (h *heart) get(connectionID string) *session {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.connectionsByID[connectionID]
 }
 
 // getConnections returns a snapshot of all registered Connection instances in roomID.
-func (h *hub) getConnections(roomID string) []Connection {
+func (h *heart) getConnections(roomID string) []Connection {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	room := h.rooms[roomID]

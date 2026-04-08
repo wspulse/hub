@@ -15,7 +15,7 @@ func WithClock(c Clock) HubOption {
 }
 
 // InjectTransport bypasses ServeHTTP and pushes a registerMessage directly
-// into the hub's register channel. Test-only — allows component tests to
+// into the heart's register channel. Test-only — allows component tests to
 // inject mock transports without HTTP upgrade.
 func InjectTransport(h Hub, connectionID, roomID string, transport core.Transport) {
 	if h == nil {
@@ -34,8 +34,8 @@ func InjectTransport(h Hub, connectionID, roomID string, transport core.Transpor
 		transport:    transport,
 	}
 	select {
-	case s.hub.register <- msg:
-	case <-s.hub.done:
-		panic("wspulse: InjectTransport: hub is stopped; cannot inject transport")
+	case s.heart.register <- msg:
+	case <-s.heart.done:
+		panic("wspulse: InjectTransport: heart is stopped; cannot inject transport")
 	}
 }

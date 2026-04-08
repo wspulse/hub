@@ -39,10 +39,10 @@ type Hub interface {
 // internalHub is the unexported, concrete implementation of Hub.
 type internalHub struct {
 	config    *hubConfig
-	hub       *hub
+	heart     *heart
 	upgrader  websocket.Upgrader
 	closeOnce sync.Once
-	hubDone   chan struct{} // closed when the hub goroutine fully exits
+	heartDone chan struct{} // closed when the hub goroutine fully exits
 }
 
 // verify Hub interface is satisfied at compile time.
@@ -57,8 +57,8 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 	for _, option := range options {
 		option(config)
 	}
-	h := newHub(config)
-	hubDone := make(chan struct{})
+	h := newHeart(config)
+	heartDone := make(chan struct{})
 	go func() {
 		h.run()
 		// Final drain: catch register messages that slipped through between
@@ -72,15 +72,15 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 				)
 				_ = message.transport.Close()
 			default:
-				close(hubDone)
+				close(heartDone)
 				return
 			}
 		}
 	}()
 	srv := &internalHub{
-		config:  config,
-		hub:     h,
-		hubDone: hubDone,
+		config:    config,
+		heart:     h,
+		heartDone: heartDone,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  config.upgraderReadBufferSize,
 			WriteBufferSize: config.upgraderWriteBufferSize,
@@ -99,7 +99,7 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 // ConnectFunc is called to authenticate; a non-nil error yields HTTP 401.
 func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Quick bail — hub is shutting down; don't upgrade or enqueue.
-	if s.hub.stopped.Load() {
+	if s.heart.stopped.Load() {
 		s.config.logger.Warn("wspulse: ServeHTTP rejected — hub closed")
 		http.Error(w, "server closed", http.StatusServiceUnavailable)
 		return
@@ -136,8 +136,8 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Atomically send registerMessage or bail if hub has stopped.
 	select {
-	case s.hub.register <- message:
-	case <-s.hub.done:
+	case s.heart.register <- message:
+	case <-s.heart.done:
 		s.config.logger.Warn("wspulse: hub stopped after upgrade, closing transport",
 			zap.String("conn_id", connectionID),
 		)
@@ -148,7 +148,7 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Send enqueues a Frame for the connection identified by connectionID.
 func (s *internalHub) Send(connectionID string, f Frame) error {
-	target := s.hub.get(connectionID)
+	target := s.heart.get(connectionID)
 	if target == nil {
 		return ErrConnectionNotFound
 	}
@@ -158,7 +158,7 @@ func (s *internalHub) Send(connectionID string, f Frame) error {
 // Broadcast enqueues a Frame for every active connection in roomID.
 func (s *internalHub) Broadcast(roomID string, f Frame) error {
 	select {
-	case <-s.hub.done:
+	case <-s.heart.done:
 		return ErrHubClosed
 	default:
 	}
@@ -172,9 +172,9 @@ func (s *internalHub) Broadcast(roomID string, f Frame) error {
 		return err
 	}
 	select {
-	case s.hub.broadcast <- broadcastMessage{roomID: roomID, data: data}:
+	case s.heart.broadcast <- broadcastMessage{roomID: roomID, data: data}:
 		return nil
-	case <-s.hub.done:
+	case <-s.heart.done:
 		return ErrHubClosed
 	}
 }
@@ -186,21 +186,21 @@ func (s *internalHub) Broadcast(roomID string, f Frame) error {
 func (s *internalHub) Kick(connectionID string) error {
 	result := make(chan error, 1)
 	select {
-	case s.hub.kick <- kickRequest{connectionID: connectionID, result: result}:
-	case <-s.hub.done:
+	case s.heart.kick <- kickRequest{connectionID: connectionID, result: result}:
+	case <-s.heart.done:
 		return ErrHubClosed
 	}
 	select {
 	case err := <-result:
 		return err
-	case <-s.hub.done:
+	case <-s.heart.done:
 		return ErrHubClosed
 	}
 }
 
 // GetConnections returns a snapshot of all registered connections in roomID.
 func (s *internalHub) GetConnections(roomID string) []Connection {
-	return s.hub.getConnections(roomID)
+	return s.heart.getConnections(roomID)
 }
 
 // Close gracefully shuts down the Hub and blocks until the hub
@@ -210,7 +210,7 @@ func (s *internalHub) GetConnections(roomID string) []Connection {
 func (s *internalHub) Close() {
 	s.closeOnce.Do(func() {
 		s.config.logger.Info("wspulse: hub closing")
-		close(s.hub.done)
+		close(s.heart.done)
 	})
-	<-s.hubDone
+	<-s.heartDone
 }
