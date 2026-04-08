@@ -1,4 +1,4 @@
-package wspulse_test
+package wstest_test
 
 import (
 	"net/http"
@@ -8,11 +8,11 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
-	wspulse "github.com/wspulse/server"
+	"github.com/wspulse/server/wstest"
 )
 
 func TestNewTestServer_ReturnsWSURL(t *testing.T) {
-	url := wspulse.NewTestServer(t, func(r *http.Request) (string, string, error) {
+	url := wstest.NewTestServer(t, func(r *http.Request) (string, string, error) {
 		return "room", "", nil
 	})
 	require.True(t, strings.HasPrefix(url, "ws://"),
