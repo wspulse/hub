@@ -243,8 +243,8 @@ func TestHub_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
-// TestServer_Broadcast_AfterClose verifies Broadcast returns ErrHubClosed
-// when called after the server has been closed.
+// TestHub_Broadcast_AfterClose verifies Broadcast returns ErrHubClosed
+// when called after the hub has been closed.
 func TestHub_Broadcast_AfterClose(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
@@ -253,8 +253,8 @@ func TestHub_Broadcast_AfterClose(t *testing.T) {
 	require.ErrorIs(t, err, wspulse.ErrHubClosed)
 }
 
-// TestServer_Kick_AfterClose verifies Kick returns ErrHubClosed
-// when called after the server has been closed.
+// TestHub_Kick_AfterClose verifies Kick returns ErrHubClosed
+// when called after the hub has been closed.
 func TestHub_Kick_AfterClose(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
@@ -299,7 +299,7 @@ func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
 	t.Cleanup(srv.Close)
 }
 
-// TestServer_ConnectFunc_RejectBody_NoLeak verifies the HTTP 401 response
+// TestHub_ConnectFunc_RejectBody_NoLeak verifies the HTTP 401 response
 // body is a generic "unauthorized" string and does not leak the internal
 // error from ConnectFunc. This unit test runs in the default make check
 // gate (no integration tag required).
