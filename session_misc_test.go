@@ -501,7 +501,7 @@ func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	connected := make(chan wspulse.Connection, 1)
 	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
-			return "room", "", nil // empty connectionID → server generates UUID
+			return "room", "", nil // empty connectionID → hub generates UUID
 		},
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c
@@ -518,7 +518,7 @@ func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Cleanup(func() { _ = c.Close() })
 
 	conn := requireReceive(t, connected)
-	assert.NotEmpty(t, conn.ID(), "expected server-generated UUID")
+	assert.NotEmpty(t, conn.ID(), "expected hub-generated UUID")
 }
 
 // ── Connection.Send with done closed ────────────────────────────────────────
@@ -574,7 +574,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 			defer wg.Done()
 			mt := newMockTransport()
 			wspulse.InjectTransport(srv, fmt.Sprintf("conn-%d", n), "room", mt)
-			// Keep readPump alive until server closes.
+			// Keep readPump alive until hub closes.
 			<-mt.closeCh
 		}(i)
 	}

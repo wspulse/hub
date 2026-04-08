@@ -21,7 +21,7 @@ func acceptAll(r *http.Request) (roomID, connectionID string, err error) {
 	return "test-room", "test-connection", nil
 }
 
-func TestServer_Send_ErrConnectionNotFound(t *testing.T) {
+func TestHub_Send_ErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
@@ -29,7 +29,7 @@ func TestServer_Send_ErrConnectionNotFound(t *testing.T) {
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
-func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
+func TestHub_Kick_ErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
@@ -37,7 +37,7 @@ func TestServer_Kick_ErrConnectionNotFound(t *testing.T) {
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
-func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
+func TestHub_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
@@ -45,7 +45,7 @@ func TestServer_GetConnections_UnknownRoom_ReturnsEmptySlice(t *testing.T) {
 	require.Empty(t, connections)
 }
 
-func TestServer_Close_SafeToCallTwice(t *testing.T) {
+func TestHub_Close_SafeToCallTwice(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close() // first call
@@ -79,7 +79,7 @@ func TestWithHeartbeat_InvalidParams_Panics(t *testing.T) {
 	}
 }
 
-func TestNewServer_NilConnect_Panics(t *testing.T) {
+func TestNewHub_NilConnect_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
 		_ = wspulse.NewHub(nil)
@@ -215,7 +215,7 @@ func TestWithLogger_ValidLogger_Accepted(t *testing.T) {
 
 // ── Broadcast to empty or unknown room (already partially covered) ────────────
 
-func TestServer_Broadcast_EmptyRoom_NoError(t *testing.T) {
+func TestHub_Broadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
@@ -225,7 +225,7 @@ func TestServer_Broadcast_EmptyRoom_NoError(t *testing.T) {
 
 // ── Kick and Broadcast during server shutdown ─────────────────────────────────
 
-func TestServer_Kick_AfterClose_ReturnsErrHubClosed(t *testing.T) {
+func TestHub_Kick_AfterClose_ReturnsErrHubClosed(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
@@ -234,7 +234,7 @@ func TestServer_Kick_AfterClose_ReturnsErrHubClosed(t *testing.T) {
 
 // ── Send/Kick during hub close (both ErrHubClosed paths) ──────────────────
 
-func TestServer_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
+func TestHub_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
@@ -245,7 +245,7 @@ func TestServer_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 
 // TestServer_Broadcast_AfterClose verifies Broadcast returns ErrHubClosed
 // when called after the server has been closed.
-func TestServer_Broadcast_AfterClose(t *testing.T) {
+func TestHub_Broadcast_AfterClose(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
@@ -255,7 +255,7 @@ func TestServer_Broadcast_AfterClose(t *testing.T) {
 
 // TestServer_Kick_AfterClose verifies Kick returns ErrHubClosed
 // when called after the server has been closed.
-func TestServer_Kick_AfterClose(t *testing.T) {
+func TestHub_Kick_AfterClose(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
@@ -303,7 +303,7 @@ func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
 // body is a generic "unauthorized" string and does not leak the internal
 // error from ConnectFunc. This unit test runs in the default make check
 // gate (no integration tag required).
-func TestServer_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
+func TestHub_ConnectFunc_RejectBody_NoLeak(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(func(r *http.Request) (string, string, error) {
 		return "", "", errors.New("internal: secret db details")

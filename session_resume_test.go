@@ -279,9 +279,9 @@ func TestResume_NoResumeWindow_DisconnectsImmediately(t *testing.T) {
 	requireReceive(t, disconnected)
 }
 
-// ── Resume: server close terminates suspended ───────────────────────────────
+// ── Resume: hub close terminates suspended ───────────────────────────────
 
-func TestResume_ServerCloseTerminatesSuspended(t *testing.T) {
+func TestResume_HubCloseTerminatesSuspended(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan error, 1)
