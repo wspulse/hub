@@ -1,4 +1,4 @@
-# Contributing to wspulse/server
+# Contributing to wspulse/hub
 
 Thank you for your interest in contributing. This document describes the process and conventions expected for all contributions.
 
@@ -12,7 +12,7 @@ Thank you for your interest in contributing. This document describes the process
 ## Development Setup
 
 ```bash
-git clone https://github.com/wspulse/server
+git clone https://github.com/wspulse/hub
 cd server
 # Clone core alongside server (required for local replace directive)
 git clone https://github.com/wspulse/core ../core
@@ -57,7 +57,7 @@ All commit messages must be in English.
 
 ## API Compatibility
 
-wspulse/server follows semantic versioning. Any change that removes, renames, or alters the signature of an exported symbol is a **breaking change** and requires a major version bump.
+wspulse/hub follows semantic versioning. Any change that removes, renames, or alters the signature of an exported symbol is a **breaking change** and requires a major version bump.
 
 - Before removing a symbol, mark it `// Deprecated: use Xxx instead.` in a minor release.
 - Adding a method to an exported interface is also a breaking change.

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	wspulse "github.com/wspulse/server"
+	wspulse "github.com/wspulse/hub"
 )
 
 // ── recordingCollector helpers (moved from metrics_integration_test.go) ──────

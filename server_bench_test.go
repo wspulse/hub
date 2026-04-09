@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	wspulse "github.com/wspulse/server"
+	wspulse "github.com/wspulse/hub"
 )
 
 // benchAcceptN returns a ConnectFunc that assigns each connection to

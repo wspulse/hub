@@ -1,13 +1,13 @@
-# wspulse/server
+# wspulse/hub
 
-[![CI](https://github.com/wspulse/server/actions/workflows/ci.yml/badge.svg)](https://github.com/wspulse/server/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/wspulse/server.svg)](https://pkg.go.dev/github.com/wspulse/server)
+[![CI](https://github.com/wspulse/hub/actions/workflows/ci.yml/badge.svg)](https://github.com/wspulse/hub/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/wspulse/hub.svg)](https://pkg.go.dev/github.com/wspulse/hub)
 [![Go](https://img.shields.io/badge/Go-1.26-blue.svg?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A minimal, production-ready WebSocket server for Go with room-based routing, session resumption, and pluggable codecs.
 
-**Status:** v0 — API is being stabilized. Module path: `github.com/wspulse/server`. Package name: `wspulse`.
+**Status:** v0 — API is being stabilized. Module path: `github.com/wspulse/hub`. Package name: `wspulse`.
 
 ---
 
@@ -24,7 +24,7 @@ A minimal, production-ready WebSocket server for Go with room-based routing, ses
 ## Install
 
 ```bash
-go get github.com/wspulse/server
+go get github.com/wspulse/hub
 ```
 
 ---
@@ -32,7 +32,7 @@ go get github.com/wspulse/server
 ## Quick Start
 
 ```go
-import "github.com/wspulse/server" // package name: wspulse
+import "github.com/wspulse/hub" // package name: wspulse
 
 srv := wspulse.NewHub(
     // ConnectFunc: authenticate and assign room + connection IDs
@@ -87,7 +87,7 @@ connections := srv.GetConnections(roomID)
 
 ```go
 import (
-    "github.com/wspulse/server" // package name: wspulse
+    "github.com/wspulse/hub" // package name: wspulse
     "github.com/wspulse/core/router"
 )
 
@@ -163,7 +163,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 
 ## Metrics
 
-wspulse/server exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (minimal overhead). Embed `NoopCollector` in custom implementations for forward-compatible additions.
+wspulse/hub exposes a `MetricsCollector` interface with typed hooks for connection lifecycle, room state, throughput, backpressure, and heartbeat health. The default is `NoopCollector{}` (minimal overhead). Embed `NoopCollector` in custom implementations for forward-compatible additions.
 
 ```go
 // Use a contrib adapter (e.g. wspulse/metrics-prometheus or wspulse/metrics-otel),
@@ -205,7 +205,7 @@ The value of `"event"` is `frame.Event` on the Go side, and is the key used to s
 
 ```go
 import (
-    "github.com/wspulse/server" // package name: wspulse
+    "github.com/wspulse/hub" // package name: wspulse
     "github.com/wspulse/core/router"
 )
 

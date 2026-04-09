@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	wspulse "github.com/wspulse/server"
+	wspulse "github.com/wspulse/hub"
 )
 
 // ── ReadPump panic recovery ─────────────────────────────────────────────────

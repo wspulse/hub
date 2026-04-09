@@ -1,8 +1,8 @@
-# Copilot Instructions — wspulse/server
+# Copilot Instructions — wspulse/hub
 
 ## Project Overview
 
-wspulse/server is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/server`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Frame`, `Codec`).
+wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/hub`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Frame`, `Codec`).
 
 ## Architecture
 
@@ -29,7 +29,7 @@ make tidy             # tidy module dependencies
 
 ## Conventions
 
-- **Go style**: `gofmt`/`goimports`, snake_case filenames, GoDoc on all public symbols, `if err != nil` error handling (no runtime panics; setup-time programmer-error panics are allowed — see **Panic policy** critical rule), secrets from env vars only. Package name is `wspulse` (not `server`) — import path `github.com/wspulse/server` resolves as `wspulse.X` without an alias.
+- **Go style**: `gofmt`/`goimports`, snake_case filenames, GoDoc on all public symbols, `if err != nil` error handling (no runtime panics; setup-time programmer-error panics are allowed — see **Panic policy** critical rule), secrets from env vars only. Package name is `wspulse` (not `server`) — import path `github.com/wspulse/hub` resolves as `wspulse.X` without an alias.
 - **Naming**:
   - **Interface names** must use full words — no abbreviations. Write `Connection`, not `Conn`; `Configuration`, not `Cfg`; `Manager`, not `Mgr`.
   - **Variable and parameter names** follow standard Go style: single-letter or short receivers (`r` for `*Router`, `c` for `*Context`), idiomatic short names for local scope (`conn`, `fn`, `err`, `ok`, `n`, `i`, `v`), and descriptive names for package-level identifiers.

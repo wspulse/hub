@@ -1,4 +1,4 @@
-// Package wstest provides test helpers for wspulse/server.
+// Package wstest provides test helpers for wspulse/hub.
 //
 // Import this package only in _test.go files to avoid pulling test
 // infrastructure into production binaries.
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	wspulse "github.com/wspulse/server"
+	wspulse "github.com/wspulse/hub"
 )
 
 // NewTestHub creates an in-process test server for use in application tests.

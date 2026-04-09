@@ -1,4 +1,4 @@
-# AGENTS.md — wspulse/server
+# AGENTS.md — wspulse/hub
 
 This file is the entry point for all AI coding agents (GitHub Copilot, Codex,
 Cursor, Claude, etc.). Full working rules are in
@@ -9,7 +9,7 @@ making any changes.
 
 ## Quick Reference
 
-**Module**: `github.com/wspulse/server` | **Package**: `server`
+**Module**: `github.com/wspulse/hub` | **Package**: `server`
 
 **Key files**:
 

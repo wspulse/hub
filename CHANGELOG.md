@@ -9,7 +9,7 @@
 - Renamed `Server` interface to `Hub`, `NewServer()` to `NewHub()`, `ServerOption` to `HubOption`
 - Renamed `ErrServerClosed` to `ErrHubClosed`, `DisconnectServerClose` to `DisconnectHubClose` (string value: `"hub_close"`)
 - Renamed internal event loop from `hub` to `heart` (`hub.go` → `heart.go`)
-- `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/server/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
+- `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/hub/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
 
 ---
 
@@ -83,7 +83,7 @@
 
 ### Changed
 
-- Package name changed from `server` to `wspulse` — import path unchanged (`github.com/wspulse/server`), but the default identifier is now `wspulse.NewServer`, `wspulse.Server`, `wspulse.Connection`, etc. Consumers using the old bare import must add an alias (`server "github.com/wspulse/server"`) or update references. (**breaking**)
+- Package name changed from `server` to `wspulse` — import path unchanged (`github.com/wspulse/hub`), but the default identifier is now `wspulse.NewServer`, `wspulse.Server`, `wspulse.Connection`, etc. Consumers using the old bare import must add an alias (`server "github.com/wspulse/hub"`) or update references. (**breaking**)
 
 ---
 
@@ -134,12 +134,12 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/server/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/wspulse/server/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/wspulse/server/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/wspulse/server/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/wspulse/server/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/wspulse/server/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/wspulse/server/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/wspulse/server/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/wspulse/server/releases/tag/v0.1.0
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/wspulse/hub/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/wspulse/hub/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/wspulse/hub/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/wspulse/hub/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/wspulse/hub/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/wspulse/hub/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/wspulse/hub/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/wspulse/hub/releases/tag/v0.1.0

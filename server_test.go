@@ -14,7 +14,7 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/zap/zaptest"
 
-	wspulse "github.com/wspulse/server"
+	wspulse "github.com/wspulse/hub"
 )
 
 func acceptAll(r *http.Request) (roomID, connectionID string, err error) {
