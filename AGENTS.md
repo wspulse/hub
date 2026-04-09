@@ -9,7 +9,7 @@ making any changes.
 
 ## Quick Reference
 
-**Module**: `github.com/wspulse/hub` | **Package**: `server`
+**Module**: `github.com/wspulse/hub` | **Package**: `wspulse`
 
 **Key files**:
 

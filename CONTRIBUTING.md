@@ -13,8 +13,8 @@ Thank you for your interest in contributing. This document describes the process
 
 ```bash
 git clone https://github.com/wspulse/hub
-cd server
-# Clone core alongside server (required for local replace directive)
+cd hub
+# Clone core alongside hub (required for local replace directive)
 git clone https://github.com/wspulse/core ../core
 go mod tidy
 ```
