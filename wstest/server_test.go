@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wspulse/server/wstest"
+	"github.com/wspulse/hub/wstest"
 )
 
 func TestNewTestHub_ReturnsWSURL(t *testing.T) {

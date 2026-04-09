@@ -1,4 +1,4 @@
-module github.com/wspulse/server
+module github.com/wspulse/hub
 
 go 1.26.0
 

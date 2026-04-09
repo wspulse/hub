@@ -1,9 +1,9 @@
-# wspulse/server — Transport Layer Internals
+# wspulse/hub — Transport Layer Internals
 
-This document describes the internal implementation mechanisms of wspulse/server
+This document describes the internal implementation mechanisms of wspulse/hub
 at the **transport and infrastructure layer**. Application-level semantics
 (business logic, room state, message history) are out of scope here; those
-belong to the consumers of wspulse/server.
+belong to the consumers of wspulse/hub.
 
 ---
 
@@ -150,7 +150,7 @@ explicit `Hub.Kick` call) initiates the teardown.
 
 ## 5. Session Resumption
 
-When `WithResumeWindow(d)` is configured with `d > 0`, wspulse/server
+When `WithResumeWindow(d)` is configured with `d > 0`, wspulse/hub
 introduces a **session layer** that decouples the application-visible
 `Connection` from the underlying WebSocket transport. This allows transparent
 reconnection without leaking connect/disconnect events to the application
@@ -269,7 +269,7 @@ If the heart has already shut down (`<-heart.done`), `Kick` returns
 
 ## 6. Metrics
 
-wspulse/server exposes an optional `MetricsCollector` interface for
+wspulse/hub exposes an optional `MetricsCollector` interface for
 instrumentation. The default is `NoopCollector{}`, a no-op implementation
 that discards all events with minimal overhead.
 
