@@ -27,4 +27,4 @@
 - [ ] New public API: includes GoDoc comments
 - [ ] Breaking change: major version bump discussed in linked issue
 - [ ] Performance-sensitive change: benchmark included (`make bench` before/after)
-- [ ] Hub serialization not violated (no session state mutation outside hub goroutine)
+- [ ] Heart serialization not violated (no session state mutation outside heart goroutine)

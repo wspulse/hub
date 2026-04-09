@@ -30,7 +30,7 @@ func benchAcceptN() wspulse.ConnectFunc {
 
 // dialN connects n WebSocket clients to srv, returning the server
 // and all connections. Caller must close the server and connections.
-func dialN(b *testing.B, srv wspulse.Server, n int) (*httptest.Server, []*websocket.Conn) {
+func dialN(b *testing.B, srv wspulse.Hub, n int) (*httptest.Server, []*websocket.Conn) {
 	b.Helper()
 	ts := httptest.NewServer(srv)
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
@@ -57,7 +57,7 @@ func BenchmarkBroadcast(b *testing.B) {
 
 func benchBroadcast(b *testing.B, roomSize int) {
 	connected := make(chan struct{}, roomSize)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		benchAcceptN(),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			select {
@@ -97,7 +97,7 @@ func benchBroadcast(b *testing.B, roomSize int) {
 func BenchmarkSend(b *testing.B) {
 	var conn wspulse.Connection
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "bench-room", "bench-conn", nil
 		},
@@ -153,7 +153,7 @@ func BenchmarkSend(b *testing.B) {
 func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	var conn wspulse.Connection
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "bench-room", "bench-conn", nil
 		},

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-09
+
+### Breaking changes
+
+- Renamed `Server` interface to `Hub`, `NewServer()` to `NewHub()`, `ServerOption` to `HubOption`
+- Renamed `ErrServerClosed` to `ErrHubClosed`, `DisconnectServerClose` to `DisconnectHubClose` (string value: `"hub_close"`)
+- Renamed internal event loop from `hub` to `heart` (`hub.go` → `heart.go`)
+- `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/server/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
+
 ---
 
 ## [0.7.0] - 2026-04-08

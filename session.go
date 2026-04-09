@@ -13,7 +13,7 @@ import (
 	core "github.com/wspulse/core"
 )
 
-// Connection represents a logical WebSocket session managed by the Server.
+// Connection represents a logical WebSocket session managed by the Hub.
 // The underlying physical WebSocket may be transparently swapped on reconnect
 // when WithResumeWindow is configured. All exported methods are safe to call
 // concurrently.
@@ -80,7 +80,7 @@ type session struct {
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
 	closeOnce sync.Once
-	config    *serverConfig
+	config    *hubConfig
 }
 
 func (s *session) ID() string            { return s.id }
@@ -190,13 +190,13 @@ func (s *session) cancelGraceTimer() {
 // Signals writePump to send a WebSocket close frame and stop.
 // Safe to call multiple times; only the first call has effect.
 //
-// Ordering note: hub-driven teardown (disconnectSession) always calls
+// Ordering note: heart-driven teardown (disconnectSession) always calls
 // cancelGraceTimer via removeSession before calling Close(). By the time
 // Close() acquires the lock, graceTimer is already nil, so timer.Reset(0)
 // is never invoked on that path. timer.Reset(0) is only reached when the
 // application calls Close() directly on a suspended session; in that case
-// it is intentional — it signals the hub via the existing graceExpired
-// channel without requiring a separate session-to-hub channel.
+// it is intentional — it signals the heart via the existing graceExpired
+// channel without requiring a separate session-to-heart channel.
 func (s *session) Close() error {
 	s.closeOnce.Do(func() {
 		s.config.logger.Debug("wspulse: session closing",
@@ -236,7 +236,7 @@ func (s *session) Close() error {
 // event loop). A transition goroutine waits for the old writePump to exit,
 // drains the resume buffer, and then starts both readPump and writePump.
 // This avoids three problems:
-//   - The hub event loop being blocked for up to writeWait while waiting
+//   - The heart event loop being blocked for up to writeWait while waiting
 //     for the old writePump to finish.
 //   - Resume-buffer frames being drained into s.send while the old
 //     writePump is still alive, which could cause the old pump to consume
@@ -251,8 +251,8 @@ func (s *session) Close() error {
 // state to stateConnected under the same lock acquisition. This ensures
 // all pre-resume frames precede post-resume frames in s.send.
 //
-// Must be called from the hub's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete func()) {
+// Must be called from the heart's event loop (single-goroutine serialization).
+func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump pair if still running.
@@ -279,7 +279,7 @@ func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete fu
 	// the resume buffer, and start the new pump pair. This guarantees:
 	// 1. Only one writePump drains s.send at a time.
 	// 2. Resume-buffer frames enter s.send only after the old pump is gone.
-	// 3. The hub event loop is never blocked.
+	// 3. The heart event loop is never blocked.
 	// 4. All buffered frames precede frames sent after the state flip.
 	// 5. readPump only runs when state is stateConnected, preventing
 	//    transportDied messages from arriving during stateSuspended.
@@ -351,7 +351,7 @@ func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete fu
 			}
 		}
 
-		// Guard: if the transport died during the transition (handled by hub
+		// Guard: if the transport died during the transition (handled by heart
 		// setting s.transport = nil), or was replaced by another attachWS call,
 		// do not start pumps on the stale/dead transport. Signal pumpDone so
 		// future transitions don't block waiting for this pump.
@@ -389,7 +389,7 @@ func (s *session) attachWS(transport core.Transport, h *hub, onResumeComplete fu
 // Returns (0, false) if the session is already closed — callers must not
 // set a grace timer in that case.
 //
-// Must be called from the hub's event loop.
+// Must be called from the heart's event loop.
 func (s *session) detachWS() (epoch uint64, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -411,9 +411,9 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 }
 
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
-// callback. When the read loop exits it signals the hub that this transport
-// has died. If the hub is shutting down, cleanup is handled inline.
-func (s *session) readPump(transport core.Transport, h *hub) {
+// callback. When the read loop exits it signals the heart that this transport
+// has died. If the heart is shutting down, cleanup is handled inline.
+func (s *session) readPump(transport core.Transport, h *heart) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -427,7 +427,7 @@ func (s *session) readPump(transport core.Transport, h *hub) {
 			)
 		}
 
-		// Notify the hub that this transport died.
+		// Notify the heart that this transport died.
 		select {
 		case h.transportDied <- transportDiedMessage{session: s, transport: transport, err: readErr}:
 		case <-h.done:
@@ -435,11 +435,11 @@ func (s *session) readPump(transport core.Transport, h *hub) {
 		}
 
 		// Unconditionally close done if nothing else will process this.
-		// If resume is enabled, the hub will handle state transition;
-		// this is a safety net for the hub-shutdown path.
+		// If resume is enabled, the heart will handle state transition;
+		// this is a safety net for the heart-shutdown path.
 		select {
 		case <-h.done:
-			s.config.logger.Debug("wspulse: readPump closed done inline (hub shutdown)",
+			s.config.logger.Debug("wspulse: readPump closed done inline (heart shutdown)",
 				zap.String("conn_id", s.id),
 			)
 			s.closeOnce.Do(func() { close(s.done) })

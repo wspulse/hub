@@ -24,7 +24,7 @@ func TestReadPumpPanicRecovery(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Frame) {
 			panic("boom")
@@ -51,7 +51,7 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnectErr := make(chan error, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Frame) {
 			panic("typed-boom")
@@ -84,7 +84,7 @@ func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	received := make(chan wspulse.Frame, 2)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -116,7 +116,7 @@ func TestBroadcastDropsOldest_SlowClient(t *testing.T) {
 	const totalBroadcasts = 200
 
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithSendBufferSize(bufferSize),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -176,7 +176,7 @@ func TestConcurrentBroadcast_NoRace(t *testing.T) {
 	const messagesPerWorker = 50
 
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
 		},
@@ -209,7 +209,7 @@ func TestConcurrentBroadcast_NoRace(t *testing.T) {
 func TestConcurrentCloseAndKick_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
@@ -240,7 +240,7 @@ func TestConcurrentCloseAndKick_NoRace(t *testing.T) {
 func TestConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
@@ -273,7 +273,7 @@ func TestConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 func TestClose_BlocksUntilHubExits(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -298,7 +298,7 @@ func TestConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c
@@ -327,7 +327,7 @@ func TestBroadcast_SkipsClosedSession(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -353,7 +353,7 @@ func TestGetConnections_EmptyAfterDisconnect(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
@@ -396,7 +396,7 @@ func (failingCodec) FrameType() int { return wspulse.TextMessage }
 func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithCodec(failingCodec{}),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -414,7 +414,7 @@ func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 func TestConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithCodec(failingCodec{}),
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
@@ -437,7 +437,7 @@ func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		// No WithOnMessage.
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -465,7 +465,7 @@ func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 
 func TestConnectFunc_RejectReturns401(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(func(r *http.Request) (string, string, error) {
+	srv := wspulse.NewHub(func(r *http.Request) (string, string, error) {
 		return "", "", errors.New("internal: db connection pool exhausted")
 	})
 	t.Cleanup(srv.Close)
@@ -484,7 +484,7 @@ func TestConnectFunc_RejectReturns401(t *testing.T) {
 
 func TestServeHTTP_AfterClose_Returns503(t *testing.T) {
 	t.Parallel()
-	srv := wspulse.NewServer(acceptAll)
+	srv := wspulse.NewHub(acceptAll)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 
@@ -499,9 +499,9 @@ func TestServeHTTP_AfterClose_Returns503(t *testing.T) {
 func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
-			return "room", "", nil // empty connectionID → server generates UUID
+			return "room", "", nil // empty connectionID → hub generates UUID
 		},
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c
@@ -518,7 +518,7 @@ func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Cleanup(func() { _ = c.Close() })
 
 	conn := requireReceive(t, connected)
-	assert.NotEmpty(t, conn.ID(), "expected server-generated UUID")
+	assert.NotEmpty(t, conn.ID(), "expected hub-generated UUID")
 }
 
 // ── Connection.Send with done closed ────────────────────────────────────────
@@ -527,7 +527,7 @@ func TestConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 	t.Parallel()
 	connected := make(chan wspulse.Connection, 1)
 	disconnected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(c wspulse.Connection) {
 			connected <- c
@@ -557,7 +557,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 	t.Parallel()
 	const count = 20
 	connected := make(chan struct{}, count)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "room", "", nil
 		},
@@ -574,7 +574,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 			defer wg.Done()
 			mt := newMockTransport()
 			wspulse.InjectTransport(srv, fmt.Sprintf("conn-%d", n), "room", mt)
-			// Keep readPump alive until server closes.
+			// Keep readPump alive until hub closes.
 			<-mt.closeCh
 		}(i)
 	}
@@ -592,7 +592,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 func TestHubShutdown_ReadPumpInlineCleanup(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}

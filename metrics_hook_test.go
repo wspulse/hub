@@ -54,7 +54,7 @@ func TestMetricsCollector_ConnectionLifecycle(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "metrics-room", "", nil
 		},
@@ -95,8 +95,8 @@ func TestMetricsCollector_MessageFlow(t *testing.T) {
 	broadcastDone := make(chan struct{}, 1)
 
 	connIndex := 0
-	var srv wspulse.Server
-	srv = wspulse.NewServer(
+	var srv wspulse.Hub
+	srv = wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			connIndex++
 			return "metrics-room", fmt.Sprintf("conn-%d", connIndex), nil
@@ -147,7 +147,7 @@ func TestMetricsCollector_ResumeAttempt(t *testing.T) {
 	dropped := make(chan struct{}, 1)
 	restored := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "resume-room", "resume-conn", nil
 		},
@@ -187,7 +187,7 @@ func TestMetricsCollector_FrameDropped_SendFull(t *testing.T) {
 	rec := &recordingCollector{}
 	connected := make(chan wspulse.Connection, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "drop-room", "drop-conn", nil
 		},
@@ -223,7 +223,7 @@ func TestMetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "drop-room", "drop-conn", nil
 		},
@@ -273,7 +273,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "timeout-room", "timeout-conn", nil
 		},
@@ -311,7 +311,7 @@ func TestMetricsCollector_Shutdown(t *testing.T) {
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 4)
 
-	srv := wspulse.NewServer(
+	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return "shutdown-room", "", nil
 		},
@@ -330,7 +330,7 @@ func TestMetricsCollector_Shutdown(t *testing.T) {
 	closedEvents := rec.eventsByName("ConnectionClosed")
 	require.Len(t, closedEvents, 2, "ConnectionClosed")
 	for _, e := range closedEvents {
-		assert.Equal(t, wspulse.DisconnectServerClose, e.reason, "reason")
+		assert.Equal(t, wspulse.DisconnectHubClose, e.reason, "reason")
 	}
 	assert.Equal(t, 1, rec.countByName("RoomDestroyed"), "RoomDestroyed")
 }
