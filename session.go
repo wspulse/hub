@@ -236,7 +236,7 @@ func (s *session) Close() error {
 // event loop). A transition goroutine waits for the old writePump to exit,
 // drains the resume buffer, and then starts both readPump and writePump.
 // This avoids three problems:
-//   - The hub event loop being blocked for up to writeWait while waiting
+//   - The heart event loop being blocked for up to writeWait while waiting
 //     for the old writePump to finish.
 //   - Resume-buffer frames being drained into s.send while the old
 //     writePump is still alive, which could cause the old pump to consume
@@ -279,7 +279,7 @@ func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete 
 	// the resume buffer, and start the new pump pair. This guarantees:
 	// 1. Only one writePump drains s.send at a time.
 	// 2. Resume-buffer frames enter s.send only after the old pump is gone.
-	// 3. The hub event loop is never blocked.
+	// 3. The heart event loop is never blocked.
 	// 4. All buffered frames precede frames sent after the state flip.
 	// 5. readPump only runs when state is stateConnected, preventing
 	//    transportDied messages from arriving during stateSuspended.
