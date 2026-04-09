@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-09
+
 ### Breaking changes
 
 - Renamed `Server` interface to `Hub`, `NewServer()` to `NewHub()`, `ServerOption` to `HubOption`
