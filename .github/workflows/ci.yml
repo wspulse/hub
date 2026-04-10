@@ -18,5 +18,3 @@ on:
 jobs:
   check:
     uses: wspulse/.github/.github/workflows/go-check.yml@main
-  changelog-gate:
-    uses: wspulse/.github/.github/workflows/changelog-gate.yml@main

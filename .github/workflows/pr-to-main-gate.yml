@@ -7,4 +7,4 @@ on:
 
 jobs:
   changelog-gate:
-    uses: wspulse/.github/.github/workflows/changelog-gate.yml@main
+    uses: wspulse/.github/.github/workflows/pr-to-main-gate.yml@main
