@@ -1,0 +1,10 @@
+name: Changelog Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  changelog-gate:
+    uses: wspulse/.github/.github/workflows/pr-to-main-gate.yml@main
