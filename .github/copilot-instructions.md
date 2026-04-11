@@ -71,32 +71,6 @@ All new features and design changes follow this process — do not skip steps:
 6. **Design discussion** — API surface, cross-SDK parity, contract/protocol updates, edge cases
 7. **Task** — feature branch from `develop`, implement with tests, CHANGELOG entry, PR following template. **Repo-scoped**: link PR to the issue. **Global**: each PR mentions the global issue (e.g., `wspulse/.github#N`); after opening a PR, comment on the global issue with the PR link
 
-## Release Workflow
-
-Releases follow a branch-based process. A CI changelog-gate enforces CHANGELOG hygiene before merge to `main`.
-
-1. **Feature work** lands on `develop` via PRs (each PR must include a CHANGELOG entry under `[Unreleased]`).
-2. **Prepare** — create a `chore/release-vX.Y.Z` branch from `develop`:
-   ```bash
-   git checkout develop && git pull
-   git checkout -b chore/release-vX.Y.Z
-   ```
-3. **Update CHANGELOG** — promote `[Unreleased]` to a concrete version and date. Remove the empty `## [Unreleased]` section entirely — the CI gate rejects it:
-   ```markdown
-   ## [X.Y.Z] - YYYY-MM-DD
-   ```
-   Also add the comparison link at the bottom:
-   ```markdown
-   [X.Y.Z]: https://github.com/wspulse/<repo>/compare/vPREV...vX.Y.Z
-   ```
-4. **Open PR** — `chore/release-vX.Y.Z` → `main`. The CI changelog-gate checks that the top `## [` entry in CHANGELOG.md is not `[Unreleased]`.
-5. **After merge** — tag the release on `main`:
-   ```bash
-   git checkout main && git pull
-   git tag vX.Y.Z && git push origin vX.Y.Z
-   ```
-6. **Sync develop** — merge `main` back into `develop` to pick up the release commit.
-
 ## Critical Rules
 
 1. **Read before write** — always read the target file and `doc/internals.md` fully before editing. For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
