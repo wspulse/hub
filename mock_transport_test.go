@@ -1,34 +1,41 @@
 package wspulse_test
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
+
+	core "github.com/wspulse/core"
 )
 
 // mockTransport is a channel-based, deterministic Transport implementation
-// for component tests. Zero network I/O — all read/write operations use
+// for component tests. Zero network I/O — all read/write/ping operations use
 // Go channels, giving the test full control over timing and data flow.
+//
+// Ping behavior: by default Ping returns nil immediately (healthy). Tests that
+// need to control ping liveness call SetPingHandler to provide a custom
+// function. This ensures tests never depend on real timeouts.
 type mockTransport struct {
 	readCh    chan readResult // test → readPump: inject messages or errors
 	writeCh   chan writeCall  // writePump → test: capture outbound frames
-	closeCh   chan struct{}   // closed once on Close()
+	closeCh   chan struct{}   // closed once on Close() or CloseNow()
 	closeOnce sync.Once
 
 	mu          sync.Mutex
 	readLimit   int64
-	pongHandler func(string) error
 	closed      bool
+	pingHandler func(ctx context.Context) error // nil = always succeed
 }
 
 type readResult struct {
-	messageType int
+	messageType core.MessageType
 	data        []byte
 	err         error
 }
 
 type writeCall struct {
-	messageType int
+	messageType core.MessageType
 	data        []byte
 }
 
@@ -40,20 +47,28 @@ func newMockTransport() *mockTransport {
 	}
 }
 
-func (m *mockTransport) ReadMessage() (int, []byte, error) {
+func (m *mockTransport) Read(ctx context.Context) (core.MessageType, []byte, error) {
 	select {
 	case r := <-m.readCh:
 		return r.messageType, r.data, r.err
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
 	case <-m.closeCh:
-		return 0, nil, &net.OpError{Op: "read", Err: net.ErrClosed}
+		return 0, nil, net.ErrClosed
 	}
 }
 
-func (m *mockTransport) WriteMessage(messageType int, data []byte) error {
+func (m *mockTransport) Write(ctx context.Context, messageType core.MessageType, data []byte) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return &net.OpError{Op: "write", Err: net.ErrClosed}
+		return net.ErrClosed
 	}
 	m.mu.Unlock()
 
@@ -67,22 +82,44 @@ func (m *mockTransport) WriteMessage(messageType int, data []byte) error {
 	return nil
 }
 
+func (m *mockTransport) Ping(ctx context.Context) error {
+	m.mu.Lock()
+	handler := m.pingHandler
+	m.mu.Unlock()
+
+	if handler != nil {
+		return handler(ctx)
+	}
+	// Default: healthy — return nil immediately.
+	return nil
+}
+
+// SetPingHandler installs a custom Ping handler for tests that need to control
+// ping liveness (e.g. simulating pong timeout). Pass nil to revert to the
+// default (always succeed).
+func (m *mockTransport) SetPingHandler(fn func(ctx context.Context) error) {
+	m.mu.Lock()
+	m.pingHandler = fn
+	m.mu.Unlock()
+}
+
 func (m *mockTransport) SetReadLimit(limit int64) {
 	m.mu.Lock()
 	m.readLimit = limit
 	m.mu.Unlock()
 }
 
-func (m *mockTransport) SetReadDeadline(_ time.Time) error  { return nil }
-func (m *mockTransport) SetWriteDeadline(_ time.Time) error { return nil }
-
-func (m *mockTransport) SetPongHandler(h func(string) error) {
-	m.mu.Lock()
-	m.pongHandler = h
-	m.mu.Unlock()
+func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
+	m.closeOnce.Do(func() {
+		m.mu.Lock()
+		m.closed = true
+		m.mu.Unlock()
+		close(m.closeCh)
+	})
+	return nil
 }
 
-func (m *mockTransport) Close() error {
+func (m *mockTransport) CloseNow() error {
 	m.closeOnce.Do(func() {
 		m.mu.Lock()
 		m.closed = true
@@ -95,24 +132,13 @@ func (m *mockTransport) Close() error {
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
 // InjectMessage simulates a message arriving from the peer.
-func (m *mockTransport) InjectMessage(messageType int, data []byte) {
+func (m *mockTransport) InjectMessage(messageType core.MessageType, data []byte) {
 	m.readCh <- readResult{messageType: messageType, data: data}
 }
 
 // InjectError simulates a read error (e.g. connection drop).
 func (m *mockTransport) InjectError(err error) {
 	m.readCh <- readResult{err: err}
-}
-
-// SimulatePong triggers the pong handler as if a pong frame arrived.
-func (m *mockTransport) SimulatePong() error {
-	m.mu.Lock()
-	h := m.pongHandler
-	m.mu.Unlock()
-	if h != nil {
-		return h("")
-	}
-	return nil
 }
 
 // DrainWrites reads all pending writes from the write channel.

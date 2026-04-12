@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Transport migration**: replaced `gorilla/websocket` with `github.com/coder/websocket`
+- Removed `WithHeartbeat(pingPeriod, pongWait)` — replaced by `WithPingInterval(d)` and `WithWriteTimeout(d)`
+- Removed `WithWriteWait(d)` — renamed to `WithWriteTimeout(d)`
+- Removed `WithCheckOrigin(fn)` — origin validation belongs to the host HTTP server/middleware
+- Removed `WithUpgraderBufferSize(readSize, writeSize)` — gorilla-specific option
+
+### Changed
+
+- Goroutine model changed from 2 (readPump + writePump) to 3+1 (readPump + writePump + pingPump + bridge goroutine)
+- Heartbeat mechanism: writePump no longer drives Ping; a dedicated `pingPump` goroutine uses `coder/websocket`'s synchronous `Ping(ctx)` API
+- TCP drops now propagate the actual I/O error to `OnDisconnect`/`OnTransportDrop` callbacks. Previously, gorilla wrapped TCP drops as close code 1006 which was classified as normal (nil error). This does not affect the suspend-vs-disconnect decision — that is determined solely by `resumeWindow`
+
 ## [0.8.0] - 2026-04-09
 
 ### Breaking changes

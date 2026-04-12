@@ -1,13 +1,13 @@
 package wspulse
 
 import (
+	"context"
 	"errors"
-	"net"
 	"runtime/debug"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 	"go.uber.org/zap"
 
 	core "github.com/wspulse/core"
@@ -50,17 +50,18 @@ const (
 //   - session is the stable, long-lived object that the application layer holds.
 //   - session.transport is the current physical WebSocket connection. It may be nil
 //     when suspended (waiting for reconnect within the resume window).
-//   - readPump and writePump are goroutines that operate on a specific transport.
-//     They are respawned on each reconnect.
+//   - readPump, writePump, and pingPump are goroutines that operate on a specific
+//     transport. They share a pumpCtx and are respawned on each reconnect.
 //   - session.send is shared across reconnects — it persists for the session lifetime.
 //
 // Goroutine ownership:
 //   - readPump  : reads from transport, forwards decoded Frames to onMessage.
-//   - writePump : sole writer on transport; drains session.send and drives Ping heartbeat.
+//   - writePump : sole writer on transport; drains session.send.
+//   - pingPump  : drives Ping heartbeat; fires PongTimeout metric on failure.
 //
 // Lifecycle signal flow:
 //
-//	close(session.done)  →  writePump sends a close frame, then transport.Close() via defer.
+//	close(session.done) → pumpCancel() via bridge goroutine → all pumps exit.
 //	readPump sees a read error (from the closed transport) and sends transportDiedMessage.
 type session struct {
 	id     string
@@ -68,14 +69,14 @@ type session struct {
 	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex     // guards transport, pumpQuit, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    core.Transport // current physical connection; nil when suspended
-	pumpQuit     chan struct{}  // closed to stop the current writePump
-	pumpDone     chan struct{}  // closed by writePump on exit
-	graceTimer   *time.Timer    // resume window timer; nil when not suspended
-	state        sessionState   // current lifecycle state
-	resumeBuffer *ringBuffer    // nil when resume is disabled
-	suspendEpoch uint64         // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex         // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport     // current physical connection; nil when suspended
+	pumpCancel   context.CancelFunc // cancels the current pump context
+	pumpDone     chan struct{}      // closed by writePump on exit
+	graceTimer   *time.Timer        // resume window timer; nil when not suspended
+	state        sessionState       // current lifecycle state
+	resumeBuffer *ringBuffer        // nil when resume is disabled
+	suspendEpoch uint64             // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -223,20 +224,20 @@ func (s *session) Close() error {
 }
 
 // attachWS sets the physical WebSocket connection for this session and
-// spawns readPump + writePump goroutines. If the session was suspended,
-// buffered frames are drained into the send channel before the new
-// writePump starts.
+// spawns readPump + writePump + pingPump goroutines. If the session was
+// suspended, buffered frames are drained into the send channel before the
+// new pumps start.
 //
 // onResumeComplete, if non-nil, is invoked in a separate goroutine after
-// the resume drain completes and both pumps have started. This ensures
+// the resume drain completes and all pumps have started. This ensures
 // the callback fires only when the session is in stateConnected with
 // active pumps. Pass nil for new (non-resume) sessions.
 //
 // The method returns immediately without blocking the caller (the hub's
 // event loop). A transition goroutine waits for the old writePump to exit,
-// drains the resume buffer, and then starts both readPump and writePump.
+// drains the resume buffer, and then starts readPump, writePump, and pingPump.
 // This avoids three problems:
-//   - The heart event loop being blocked for up to writeWait while waiting
+//   - The heart event loop being blocked for up to writeTimeout while waiting
 //     for the old writePump to finish.
 //   - Resume-buffer frames being drained into s.send while the old
 //     writePump is still alive, which could cause the old pump to consume
@@ -255,28 +256,36 @@ func (s *session) Close() error {
 func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete func()) {
 	s.mu.Lock()
 
-	// Stop the previous pump pair if still running.
-	if s.pumpQuit != nil {
-		close(s.pumpQuit)
-		s.pumpQuit = nil
+	// Stop the previous pump group if still running.
+	if s.pumpCancel != nil {
+		s.pumpCancel()
 	}
 	oldPumpDone := s.pumpDone
 
 	s.transport = transport
-	s.pumpQuit = make(chan struct{})
+	pumpCtx, pumpCancel := context.WithCancel(context.Background())
+	s.pumpCancel = pumpCancel
 	s.pumpDone = make(chan struct{})
 
 	// Keep the current state — for resume sessions this stays
 	// stateSuspended until the transition goroutine finishes draining.
 	// For new sessions the state is already stateConnected.
 	isResume := s.state == stateSuspended
-	pumpQuit := s.pumpQuit
 	pumpDone := s.pumpDone
 	buffer := s.resumeBuffer
 	s.mu.Unlock()
 
+	// Bridge goroutine: propagate session termination to pump context.
+	go func() {
+		select {
+		case <-s.done:
+			pumpCancel()
+		case <-pumpCtx.Done():
+		}
+	}()
+
 	// Transition goroutine: wait for the old writePump to exit, drain
-	// the resume buffer, and start the new pump pair. This guarantees:
+	// the resume buffer, and start the new pump group. This guarantees:
 	// 1. Only one writePump drains s.send at a time.
 	// 2. Resume-buffer frames enter s.send only after the old pump is gone.
 	// 3. The heart event loop is never blocked.
@@ -364,14 +373,16 @@ func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete 
 			// Close the orphaned transport — no pumps were started on it, so
 			// writePump's defer will never close it. Without this, the
 			// underlying TCP connection and file descriptor leak.
-			_ = transport.Close()
+			_ = transport.CloseNow()
+			pumpCancel()
 			close(pumpDone)
 			return
 		}
 		s.mu.Unlock()
 
-		go s.readPump(transport, h)
-		go s.writePump(transport, pumpQuit, pumpDone)
+		go s.readPump(pumpCtx, transport, h)
+		go s.writePump(pumpCtx, transport, pumpDone)
+		go s.pingPump(pumpCtx, transport)
 
 		if onResumeComplete != nil {
 			s.mu.Lock()
@@ -398,11 +409,10 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 		return 0, false
 	}
 
-	// Stop the current pump pair and nil out the channels so attachWS
-	// does not attempt to close them again on resume.
-	if s.pumpQuit != nil {
-		close(s.pumpQuit)
-		s.pumpQuit = nil
+	// Stop the current pump group.
+	if s.pumpCancel != nil {
+		s.pumpCancel()
+		s.pumpCancel = nil
 	}
 	s.transport = nil
 	s.state = stateSuspended
@@ -410,10 +420,58 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 	return s.suspendEpoch, true
 }
 
+// pingPump drives the heartbeat ping/pong mechanism on the transport.
+// Sends a Ping at each tick of pingInterval and waits for the pong reply
+// within writeTimeout. On failure, fires PongTimeout metric and calls
+// CloseNow() to force-close the transport (without cancelling the context,
+// so other pumps detect the error via their own I/O failures).
+func (s *session) pingPump(ctx context.Context, transport core.Transport) {
+	ticker := s.config.clock.NewTicker(s.config.pingInterval)
+	defer ticker.Stop()
+
+	// Send an initial ping immediately so dead-on-arrival connections are
+	// detected within writeTimeout instead of waiting a full pingInterval.
+	if !s.doPing(ctx, transport) {
+		return
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			if !s.doPing(ctx, transport) {
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// doPing sends a single Ping with a writeTimeout deadline. Returns true if the
+// pong arrived successfully, false if the caller should exit.
+func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
+	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
+	err := transport.Ping(pingCtx)
+	cancel()
+	if err != nil {
+		// context.Canceled means the pump context was cancelled (reconnect/close);
+		// this is not a pong timeout — exit silently without firing the metric.
+		if ctx.Err() != nil {
+			return false
+		}
+		s.config.metrics.PongTimeout(s.roomID, s.id)
+		s.config.logger.Debug("wspulse: pingPump stopping: ping failed",
+			zap.String("conn_id", s.id), zap.Error(err))
+		_ = transport.CloseNow()
+		return false
+	}
+	return true
+}
+
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the heart that this transport
 // has died. If the heart is shutting down, cleanup is handled inline.
-func (s *session) readPump(transport core.Transport, h *heart) {
+func (s *session) readPump(ctx context.Context, transport core.Transport, h *heart) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -448,19 +506,11 @@ func (s *session) readPump(transport core.Transport, h *heart) {
 	}()
 
 	transport.SetReadLimit(s.config.maxMessageSize)
-	_ = transport.SetReadDeadline(time.Now().Add(s.config.pongWait))
-	transport.SetPongHandler(func(string) error {
-		return transport.SetReadDeadline(time.Now().Add(s.config.pongWait))
-	})
 
 	for {
-		_, data, err := transport.ReadMessage()
+		_, data, err := transport.Read(ctx)
 		if err != nil {
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
-				s.config.metrics.PongTimeout(s.roomID, s.id)
-			}
-			if isNormalClose(err) {
+			if ctx.Err() != nil || isNormalClose(err) {
 				s.config.logger.Debug("wspulse: connection closed normally",
 					zap.String("conn_id", s.id),
 				)
@@ -486,114 +536,74 @@ func (s *session) readPump(transport core.Transport, h *heart) {
 // connection close. When true, OnDisconnect receives a nil error.
 //
 // Normal close conditions:
-//   - net.ErrClosed: the transport was closed by the local writePump defer.
-//   - *websocket.CloseError with code 1000 (CloseNormalClosure):
-//     remote sent a standard close frame.
-//   - *websocket.CloseError with code 1001 (CloseGoingAway):
-//     remote is shutting down (e.g. browser tab closed).
-//   - *websocket.CloseError with code 1006 (CloseAbnormalClosure):
-//     TCP connection dropped without a close frame (e.g. network change,
-//     NAT timeout). Treated as normal because session resumption handles
-//     transient disconnects transparently — OnDisconnect only fires if
-//     the client fails to reconnect within the resume window.
+//   - context.Canceled: the pump context was cancelled (reconnect, close, kick).
+//   - Close status 1000 (StatusNormalClosure): remote sent a standard close frame.
+//   - Close status 1001 (StatusGoingAway): remote is shutting down (e.g. browser tab closed).
 //
-// Everything else is abnormal and propagated to OnDisconnect as a
-// non-nil error: I/O timeouts, protocol errors, and other read failures.
+// Everything else is abnormal and propagated to OnDisconnect /
+// OnTransportDrop as a non-nil error: ping timeout (CloseNow → net
+// error), TCP drops (RST/FIN/EOF), protocol errors, and other read
+// failures. Note: the error value only affects what the callback
+// receives — the suspend-vs-disconnect decision is made by the heart
+// based solely on resumeWindow, independent of the error.
 func isNormalClose(err error) bool {
-	if errors.Is(err, net.ErrClosed) {
+	if errors.Is(err, context.Canceled) {
 		return true
 	}
-	var ce *websocket.CloseError
-	if errors.As(err, &ce) {
-		return ce.Code == websocket.CloseNormalClosure ||
-			ce.Code == websocket.CloseGoingAway ||
-			ce.Code == websocket.CloseAbnormalClosure
-	}
-	return false
+	code := websocket.CloseStatus(err)
+	return code == websocket.StatusNormalClosure ||
+		code == websocket.StatusGoingAway
 }
 
-// writePump drains the send channel and drives the Ping heartbeat on the transport.
-// writePump is the sole goroutine that writes to the transport. On exit it closes
-// the underlying TCP connection so that readPump's ReadMessage unblocks.
+// writePump drains the send channel on the transport. writePump is the sole
+// goroutine that writes application data to the transport. On exit it
+// force-closes the underlying connection so that readPump's Read unblocks.
 //
-// pumpQuit is closed when this pump should stop (reconnect or session close).
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(transport core.Transport, pumpQuit, pumpDone chan struct{}) {
-	ticker := s.config.clock.NewTicker(s.config.pingPeriod)
+func (s *session) writePump(ctx context.Context, transport core.Transport, pumpDone chan struct{}) {
 	defer func() {
-		ticker.Stop()
-		_ = transport.Close()
+		_ = transport.CloseNow()
 		close(pumpDone)
 	}()
 
 	for {
-		// Priority exit: if pumpQuit has been signalled (reconnect swap),
+		// Priority exit: if the context has been cancelled (reconnect swap),
 		// stop immediately to avoid consuming messages from s.send that
 		// the replacement pump should deliver.
 		select {
-		case <-pumpQuit:
-			s.config.logger.Debug("wspulse: writePump stopping: pumpQuit signalled (priority)",
-				zap.String("conn_id", s.id),
-			)
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			_ = transport.WriteMessage(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			)
-			return
-		case <-s.done:
-			s.config.logger.Debug("wspulse: writePump stopping: session done (priority)",
-				zap.String("conn_id", s.id),
-			)
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			_ = transport.WriteMessage(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			)
+		case <-ctx.Done():
 			return
 		default:
 		}
 
 		select {
 		case data := <-s.send:
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			if err := transport.WriteMessage(s.config.codec.FrameType(), data); err != nil {
+			writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
+			err := transport.Write(writeCtx, s.config.codec.FrameType(), data)
+			cancel()
+			if err != nil {
+				if ctx.Err() != nil {
+					s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+						zap.String("conn_id", s.id))
+					return
+				}
 				s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
 				return
 			}
 			s.config.metrics.MessageSent(s.roomID, s.id, len(data))
 			s.config.metrics.SendBufferUtilization(s.roomID, s.id, len(s.send), cap(s.send))
 
-		case <-ticker.C:
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			if err := transport.WriteMessage(websocket.PingMessage, nil); err != nil {
-				s.config.logger.Debug("wspulse: writePump stopping: ping write failed",
-					zap.String("conn_id", s.id),
-					zap.Error(err),
-				)
-				return
+		case <-ctx.Done():
+			s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+				zap.String("conn_id", s.id))
+			// Send a graceful close frame only on session shutdown (s.done
+			// closed), not on reconnect swap where speed matters and the
+			// old transport may already be dead.
+			select {
+			case <-s.done:
+				_ = transport.Close(core.StatusNormalClosure, "")
+			default:
 			}
-
-		case <-pumpQuit:
-			s.config.logger.Debug("wspulse: writePump stopping: pumpQuit signalled",
-				zap.String("conn_id", s.id),
-			)
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			_ = transport.WriteMessage(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			)
-			return
-
-		case <-s.done:
-			s.config.logger.Debug("wspulse: writePump stopping: session done",
-				zap.String("conn_id", s.id),
-			)
-			_ = transport.SetWriteDeadline(time.Now().Add(s.config.writeWait))
-			_ = transport.WriteMessage(
-				websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
-			)
 			return
 		}
 	}

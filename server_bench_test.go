@@ -1,6 +1,7 @@
 package wspulse_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 
 	wspulse "github.com/wspulse/hub"
 )
@@ -34,11 +35,12 @@ func dialN(b *testing.B, srv wspulse.Hub, n int) (*httptest.Server, []*websocket
 	b.Helper()
 	ts := httptest.NewServer(srv)
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
-	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
 
 	conns := make([]*websocket.Conn, n)
 	for i := range conns {
-		c, _, err := dialer.Dial(u, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		c, _, err := websocket.Dial(ctx, u, nil)
+		cancel()
 		if err != nil {
 			b.Fatalf("Dial %d failed: %v", i, err)
 		}
@@ -72,7 +74,7 @@ func benchBroadcast(b *testing.B, roomSize int) {
 	b.Cleanup(srv.Close)
 	for _, c := range conns {
 		conn := c
-		b.Cleanup(func() { _ = conn.Close() })
+		b.Cleanup(func() { _ = conn.CloseNow() })
 	}
 
 	// Wait for all connections to register.
@@ -116,12 +118,13 @@ func BenchmarkSend(b *testing.B) {
 	b.Cleanup(srv.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
-	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
-	c, _, err := dialer.Dial(u, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	c, _, err := websocket.Dial(ctx, u, nil)
+	cancel()
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	b.Cleanup(func() { _ = c.Close() })
+	b.Cleanup(func() { _ = c.CloseNow() })
 
 	select {
 	case <-connected:
@@ -132,7 +135,7 @@ func BenchmarkSend(b *testing.B) {
 	// Drain client side to prevent send buffer full.
 	go func() {
 		for {
-			_, _, err := c.ReadMessage()
+			_, _, err := c.Read(context.Background())
 			if err != nil {
 				return
 			}
@@ -172,12 +175,13 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	b.Cleanup(srv.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
-	dialer := websocket.Dialer{HandshakeTimeout: 3 * time.Second}
-	c, _, err := dialer.Dial(u, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	c, _, err := websocket.Dial(ctx, u, nil)
+	cancel()
 	if err != nil {
 		b.Fatalf("Dial failed: %v", err)
 	}
-	b.Cleanup(func() { _ = c.Close() })
+	b.Cleanup(func() { _ = c.CloseNow() })
 
 	select {
 	case <-connected:

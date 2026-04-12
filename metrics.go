@@ -109,8 +109,8 @@ type MetricsCollector interface {
 	// Implementations should apply sampling, batching, or throttling as needed.
 	SendBufferUtilization(roomID, connectionID string, used, capacity int)
 
-	// PongTimeout is called in the readPump when a read deadline expires,
-	// indicating the remote peer failed to respond to a Ping in time.
+	// PongTimeout is called when a Ping fails (timeout or transport error),
+	// indicating the remote peer is unreachable.
 	PongTimeout(roomID, connectionID string)
 }
 

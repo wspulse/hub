@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -73,7 +72,7 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 	// Inject a message into readPump via mock transport.
 	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: []byte(`{"text":"hello"}`)})
 	require.NoError(t, err)
-	mt.InjectMessage(websocket.TextMessage, encoded)
+	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	f := requireReceive(t, received)
 	assert.Equal(t, "msg", f.Event)
@@ -324,7 +323,7 @@ func TestMultipleRooms_BroadcastIsolation(t *testing.T) {
 		if !ok {
 			break // no more writes within window
 		}
-		if wb.messageType == websocket.TextMessage {
+		if wb.messageType == wspulse.TextMessage {
 			assert.Fail(t, "room-b should not receive room-a broadcast")
 			break
 		}

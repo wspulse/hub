@@ -522,7 +522,7 @@ func (h *heart) shutdown() {
 	for {
 		select {
 		case message := <-h.register:
-			_ = message.transport.Close()
+			_ = message.transport.CloseNow()
 		default:
 			goto drained
 		}

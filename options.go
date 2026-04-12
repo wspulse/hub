@@ -1,6 +1,7 @@
 package wspulse
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -9,9 +10,8 @@ import (
 
 // Configuration upper bounds — option functions panic if these ceilings are exceeded.
 const (
-	maxPingPeriod    = 5 * time.Minute  // WithHeartbeat: pingPeriod upper bound
-	maxPongWait      = 10 * time.Minute // WithHeartbeat: pongWait upper bound
-	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
+	maxPingInterval  = 1 * time.Minute  // WithPingInterval upper bound
+	maxWriteTimeout  = 30 * time.Second // WithWriteTimeout upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
 )
@@ -34,43 +34,35 @@ type ConnectFunc func(r *http.Request) (roomID, connectionID string, err error)
 type HubOption func(*hubConfig) //nolint:revive
 
 type hubConfig struct {
-	connect                 ConnectFunc
-	onConnect               func(Connection)
-	onMessage               func(Connection, Frame)
-	onDisconnect            func(Connection, error)
-	onTransportDrop         func(Connection, error)
-	onTransportRestore      func(Connection)
-	pingPeriod              time.Duration
-	pongWait                time.Duration
-	writeWait               time.Duration
-	maxMessageSize          int64
-	sendBufferSize          int
-	resumeWindow            time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
-	codec                   Codec
-	checkOrigin             func(r *http.Request) bool
-	logger                  *zap.Logger
-	clock                   clock
-	upgraderReadBufferSize  int
-	upgraderWriteBufferSize int
-	metrics                 MetricsCollector
+	connect            ConnectFunc
+	onConnect          func(Connection)
+	onMessage          func(Connection, Frame)
+	onDisconnect       func(Connection, error)
+	onTransportDrop    func(Connection, error)
+	onTransportRestore func(Connection)
+	pingInterval       time.Duration
+	writeTimeout       time.Duration
+	maxMessageSize     int64
+	sendBufferSize     int
+	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
+	codec              Codec
+	logger             *zap.Logger
+	clock              clock
+	metrics            MetricsCollector
 }
 
 func defaultConfig(connect ConnectFunc) *hubConfig {
 	return &hubConfig{
-		connect:                 connect,
-		pingPeriod:              10 * time.Second,
-		pongWait:                30 * time.Second,
-		writeWait:               10 * time.Second,
-		maxMessageSize:          512,
-		sendBufferSize:          256,
-		resumeWindow:            0,
-		codec:                   JSONCodec,
-		checkOrigin:             func(*http.Request) bool { return true },
-		logger:                  zap.NewNop(),
-		clock:                   realClock{},
-		upgraderReadBufferSize:  1024,
-		upgraderWriteBufferSize: 1024,
-		metrics:                 NoopCollector{},
+		connect:        connect,
+		pingInterval:   10 * time.Second,
+		writeTimeout:   10 * time.Second,
+		maxMessageSize: 512,
+		sendBufferSize: 256,
+		resumeWindow:   0,
+		codec:          JSONCodec,
+		logger:         zap.NewNop(),
+		clock:          realClock{},
+		metrics:        NoopCollector{},
 	}
 }
 
@@ -137,35 +129,31 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 	return func(c *hubConfig) { c.onTransportRestore = fn }
 }
 
-// WithHeartbeat configures Ping/Pong heartbeat intervals.
-// Defaults: pingPeriod=10 s, pongWait=30 s.
-// pingPeriod must be in (0, 5m] and pongWait must be in (pingPeriod, 10m].
-func WithHeartbeat(pingPeriod, pongWait time.Duration) HubOption {
-	if pingPeriod <= 0 || pongWait <= 0 || pingPeriod >= pongWait {
-		panic("wspulse: WithHeartbeat: pingPeriod must be positive and strictly less than pongWait")
+// WithPingInterval sets the interval between heartbeat pings sent by the
+// hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
+// a timeout derived from WriteTimeout. If the pong does not arrive within that
+// timeout, the connection is considered dead.
+// d must be in (0, 1m]. Default: 10 s.
+func WithPingInterval(d time.Duration) HubOption {
+	if d <= 0 {
+		panic("wspulse: WithPingInterval: duration must be positive")
 	}
-	if pingPeriod > maxPingPeriod {
-		panic("wspulse: WithHeartbeat: pingPeriod exceeds maximum (5m)")
+	if d > maxPingInterval {
+		panic(fmt.Sprintf("wspulse: WithPingInterval: duration exceeds maximum (%v)", maxPingInterval))
 	}
-	if pongWait > maxPongWait {
-		panic("wspulse: WithHeartbeat: pongWait exceeds maximum (10m)")
-	}
-	return func(c *hubConfig) {
-		c.pingPeriod = pingPeriod
-		c.pongWait = pongWait
-	}
+	return func(c *hubConfig) { c.pingInterval = d }
 }
 
-// WithWriteWait sets the deadline for a single write operation on a connection.
-// d must be in (0, 30s].
-func WithWriteWait(d time.Duration) HubOption {
+// WithWriteTimeout sets the timeout for a single write operation on a
+// connection, including Ping. d must be in (0, 30s]. Default: 10 s.
+func WithWriteTimeout(d time.Duration) HubOption {
 	if d <= 0 {
-		panic("wspulse: WithWriteWait: duration must be positive")
+		panic("wspulse: WithWriteTimeout: duration must be positive")
 	}
-	if d > maxWriteWait {
-		panic("wspulse: WithWriteWait: duration exceeds maximum (30s)")
+	if d > maxWriteTimeout {
+		panic(fmt.Sprintf("wspulse: WithWriteTimeout: duration exceeds maximum (%v)", maxWriteTimeout))
 	}
-	return func(c *hubConfig) { c.writeWait = d }
+	return func(c *hubConfig) { c.writeTimeout = d }
 }
 
 // WithMaxMessageSize sets the maximum size in bytes for inbound messages.
@@ -175,7 +163,7 @@ func WithMaxMessageSize(n int64) HubOption {
 		panic("wspulse: WithMaxMessageSize: n must be at least 1")
 	}
 	if n > maxMsgSizeBytes {
-		panic("wspulse: WithMaxMessageSize: n exceeds maximum (64 MiB)")
+		panic(fmt.Sprintf("wspulse: WithMaxMessageSize: n exceeds maximum (%d)", maxMsgSizeBytes))
 	}
 	return func(c *hubConfig) { c.maxMessageSize = n }
 }
@@ -187,7 +175,7 @@ func WithSendBufferSize(n int) HubOption {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
 	}
 	if n > maxSendBufFrames {
-		panic("wspulse: WithSendBufferSize: n exceeds maximum (4096)")
+		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufFrames))
 	}
 	return func(c *hubConfig) { c.sendBufferSize = n }
 }
@@ -199,18 +187,6 @@ func WithCodec(codec Codec) HubOption {
 		panic("wspulse: WithCodec: codec must not be nil")
 	}
 	return func(c *hubConfig) { c.codec = codec }
-}
-
-// WithCheckOrigin sets the origin validation function for WebSocket upgrades.
-// Defaults to accepting all origins (permissive — tighten this in production).
-// Panics if fn is nil; pass the default (accept-all) explicitly if desired:
-//
-//	wspulse.WithCheckOrigin(func(*http.Request) bool { return true })
-func WithCheckOrigin(fn func(r *http.Request) bool) HubOption {
-	if fn == nil {
-		panic("wspulse: WithCheckOrigin: fn must not be nil")
-	}
-	return func(c *hubConfig) { c.checkOrigin = fn }
 }
 
 // WithLogger sets the zap logger used for internal diagnostics.
@@ -234,23 +210,6 @@ func WithResumeWindow(d time.Duration) HubOption {
 		panic("wspulse: WithResumeWindow: duration must be non-negative")
 	}
 	return func(c *hubConfig) { c.resumeWindow = d }
-}
-
-// WithUpgraderBufferSize sets the I/O buffer sizes for the WebSocket upgrader.
-// Larger buffers reduce per-write allocations for applications that send
-// large messages. Default: 1024 bytes for both read and write.
-// Panics if either size is not positive.
-func WithUpgraderBufferSize(readSize, writeSize int) HubOption {
-	if readSize <= 0 {
-		panic("wspulse: WithUpgraderBufferSize: readSize must be positive")
-	}
-	if writeSize <= 0 {
-		panic("wspulse: WithUpgraderBufferSize: writeSize must be positive")
-	}
-	return func(c *hubConfig) {
-		c.upgraderReadBufferSize = readSize
-		c.upgraderWriteBufferSize = writeSize
-	}
 }
 
 // WithMetrics configures the MetricsCollector used by the Hub.
