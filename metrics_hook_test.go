@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -121,7 +120,7 @@ func TestMetricsCollector_MessageFlow(t *testing.T) {
 
 	// Inject a message from conn-1.
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "test"})
-	mt1.InjectMessage(websocket.TextMessage, encoded)
+	mt1.InjectMessage(wspulse.TextMessage, encoded)
 
 	requireReceive(t, broadcastDone)
 
@@ -262,10 +261,8 @@ func TestMetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 }
 
 // ── Metrics: pong timeout ───────────────────────────────────────────────────
-// Note: PongTimeout requires real deadline behavior from readPump.
-// With mock transport, SetReadDeadline is a no-op, so readPump never times out.
-// This metric is tested indirectly: the readPump checks for net.Error.Timeout()
-// on the ReadMessage error. We can simulate this.
+// PongTimeout is fired by pingPump when transport.Ping() fails. Use a short
+// pingInterval and feed an error into the mock's pingErr channel.
 
 func TestMetricsCollector_PongTimeout(t *testing.T) {
 	t.Parallel()
@@ -278,6 +275,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 			return "timeout-room", "timeout-conn", nil
 		},
 		wspulse.WithMetrics(rec),
+		wspulse.WithPingInterval(50*time.Millisecond),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
 		}),
@@ -289,20 +287,13 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "timeout-conn", "timeout-room", connected)
 
-	// Inject a timeout error to simulate pong timeout.
-	mt.InjectError(&timeoutError{})
+	// Feed a ping failure to simulate pong timeout.
+	mt.pingErr <- errors.New("pong timeout")
 
 	requireReceive(t, disconnected)
 
 	assert.Equal(t, 1, rec.countByName("PongTimeout"), "PongTimeout")
 }
-
-// timeoutError implements net.Error with Timeout() == true.
-type timeoutError struct{}
-
-func (e *timeoutError) Error() string   { return "i/o timeout" }
-func (e *timeoutError) Timeout() bool   { return true }
-func (e *timeoutError) Temporary() bool { return false }
 
 // ── Metrics: shutdown ───────────────────────────────────────────────────────
 

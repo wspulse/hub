@@ -1,6 +1,7 @@
 package wspulse_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,10 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	core "github.com/wspulse/core"
 	wspulse "github.com/wspulse/hub"
 )
 
@@ -42,7 +44,7 @@ func TestReadPumpPanicRecovery(t *testing.T) {
 
 	// Inject a message that triggers the panic in OnMessage.
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
-	mt.InjectMessage(websocket.TextMessage, encoded)
+	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	requireReceive(t, disconnected)
 }
@@ -68,7 +70,7 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
-	mt.InjectMessage(websocket.TextMessage, encoded)
+	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	got := requireReceive(t, disconnectErr)
 	var pe *wspulse.PanicError
@@ -98,11 +100,11 @@ func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Inject malformed frame (not valid JSON).
-	mt.InjectMessage(websocket.TextMessage, []byte("not-json"))
+	mt.InjectMessage(wspulse.TextMessage, []byte("not-json"))
 
 	// Inject valid frame after the malformed one.
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
-	mt.InjectMessage(websocket.TextMessage, encoded)
+	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	f := requireReceive(t, received)
 	assert.Equal(t, "valid", f.Event)
@@ -144,7 +146,7 @@ func TestBroadcastDropsOldest_SlowClient(t *testing.T) {
 			require.Fail(t, "timed out waiting for frames")
 		}
 		// Skip ping frames.
-		if w.messageType != websocket.TextMessage {
+		if w.messageType != wspulse.TextMessage {
 			continue
 		}
 		f, err := wspulse.JSONCodec.Decode(w.data)
@@ -391,7 +393,7 @@ func (failingCodec) Decode(data []byte) (wspulse.Frame, error) {
 	return wspulse.JSONCodec.Decode(data)
 }
 
-func (failingCodec) FrameType() int { return wspulse.TextMessage }
+func (failingCodec) FrameType() core.MessageType { return core.TextMessage }
 
 func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
@@ -453,7 +455,7 @@ func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 
 	// Send a message — readPump should process it without error even with no OnMessage.
 	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
-	mt.InjectMessage(websocket.TextMessage, encoded)
+	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	// Then kill the transport.
 	mt.InjectError(errors.New("closed"))
@@ -512,10 +514,11 @@ func TestServeHTTP_EmptyConnectionID_GetsUUID(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	u := "ws" + strings.TrimPrefix(ts.URL, "http")
-	dialer := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
-	c, _, err := dialer.Dial(u, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, u, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = c.Close() })
+	t.Cleanup(func() { _ = c.CloseNow() })
 
 	conn := requireReceive(t, connected)
 	assert.NotEmpty(t, conn.ID(), "expected hub-generated UUID")

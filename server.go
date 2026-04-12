@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,6 @@ type Hub interface {
 type internalHub struct {
 	config    *hubConfig
 	heart     *heart
-	upgrader  websocket.Upgrader
 	closeOnce sync.Once
 	heartDone chan struct{} // closed when the heart goroutine (event loop) fully exits
 }
@@ -70,7 +69,7 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 				config.logger.Warn("wspulse: closing leaked transport from post-shutdown register",
 					zap.String("conn_id", message.connectionID),
 				)
-				_ = message.transport.Close()
+				_ = message.transport.CloseNow()
 			default:
 				close(heartDone)
 				return
@@ -81,14 +80,9 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 		config:    config,
 		heart:     h,
 		heartDone: heartDone,
-		upgrader: websocket.Upgrader{
-			ReadBufferSize:  config.upgraderReadBufferSize,
-			WriteBufferSize: config.upgraderWriteBufferSize,
-			CheckOrigin:     config.checkOrigin,
-		},
 	}
 	config.logger.Info("wspulse: hub started",
-		zap.Duration("ping_period", config.pingPeriod),
+		zap.Duration("ping_interval", config.pingInterval),
 		zap.Duration("resume_window", config.resumeWindow),
 		zap.Int("send_buffer_size", config.sendBufferSize),
 	)
@@ -117,11 +111,22 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		connectionID = uuid.NewString()
 	}
 
-	transport, err := s.upgrader.Upgrade(w, r, nil)
+	// wspulse/hub is an http.Handler, not a standalone server. Origin
+	// validation belongs to the HTTP server or middleware layer that
+	// mounts this handler — the same architectural boundary that
+	// determined MaxConnections belongs to infrastructure (hub#28).
+	// Hardcoding InsecureSkipVerify maintains the current default
+	// (accept all origins) and avoids duplicating checks the host
+	// server already provides.
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
 	if err != nil {
 		s.config.logger.Error("wspulse: upgrade failed", zap.Error(err))
 		return
 	}
+
+	transport := &coderTransport{c: conn}
 
 	message := registerMessage{
 		connectionID: connectionID,
@@ -141,7 +146,7 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.config.logger.Warn("wspulse: hub stopped after upgrade, closing transport",
 			zap.String("conn_id", connectionID),
 		)
-		_ = transport.Close()
+		_ = transport.CloseNow()
 		return
 	}
 }
