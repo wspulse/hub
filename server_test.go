@@ -82,28 +82,6 @@ func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 
 // ── Option validation tests ───────────────────────────────────────────────────
 
-func TestWithWriteTimeout_ValidDuration_Accepted(t *testing.T) {
-	t.Parallel()
-	srv := wspulse.NewHub(acceptAll,
-		wspulse.WithWriteTimeout(5*time.Second),
-	)
-	t.Cleanup(srv.Close)
-}
-
-func TestWithWriteTimeout_Zero_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		_ = wspulse.WithWriteTimeout(0)
-	})
-}
-
-func TestWithWriteTimeout_ExceedsMax_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		_ = wspulse.WithWriteTimeout(31 * time.Second)
-	})
-}
-
 func TestWithHeartbeat_SetsBothParams(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll,

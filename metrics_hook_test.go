@@ -279,7 +279,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 			return "timeout-room", "timeout-conn", nil
 		},
 		wspulse.WithMetrics(rec),
-		wspulse.WithPingInterval(50*time.Millisecond),
+		wspulse.WithHeartbeat(50*time.Millisecond, 10*time.Second),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
 		}),

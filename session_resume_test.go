@@ -930,7 +930,7 @@ func TestResume_WritePumpExitsViaContextCancellation(t *testing.T) {
 	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
-		wspulse.WithPingInterval(5*time.Second), // long ping interval
+		wspulse.WithHeartbeat(5*time.Second, 10*time.Second), // long ping interval
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:

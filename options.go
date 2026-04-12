@@ -128,39 +128,41 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 	return func(c *hubConfig) { c.onTransportRestore = fn }
 }
 
-// WithPingInterval sets the interval between heartbeat pings sent by the
-// hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
-// a timeout derived from WriteTimeout. If the pong does not arrive within that
-// timeout, the connection is considered dead.
-// d must be in (0, 1m]. Default: 10 s.
-func WithPingInterval(d time.Duration) HubOption {
+// withPingInterval validates and sets the ping interval.
+// d must be in (0, 1m].
+func withPingInterval(d time.Duration) HubOption {
 	if d <= 0 {
-		panic("wspulse: WithPingInterval: duration must be positive")
+		panic("wspulse: WithHeartbeat: pingInterval must be positive")
 	}
 	if d > maxPingInterval {
-		panic("wspulse: WithPingInterval: duration exceeds maximum (1m)")
+		panic("wspulse: WithHeartbeat: pingInterval exceeds maximum (1m)")
 	}
 	return func(c *hubConfig) { c.pingInterval = d }
 }
 
-// WithWriteTimeout sets the timeout for a single write operation on a
-// connection, including Ping. d must be in (0, 30s]. Default: 10 s.
-func WithWriteTimeout(d time.Duration) HubOption {
+// withWriteTimeout validates and sets the write timeout.
+// d must be in (0, 30s].
+func withWriteTimeout(d time.Duration) HubOption {
 	if d <= 0 {
-		panic("wspulse: WithWriteTimeout: duration must be positive")
+		panic("wspulse: WithHeartbeat: writeTimeout must be positive")
 	}
 	if d > maxWriteTimeout {
-		panic("wspulse: WithWriteTimeout: duration exceeds maximum (30s)")
+		panic("wspulse: WithHeartbeat: writeTimeout exceeds maximum (30s)")
 	}
 	return func(c *hubConfig) { c.writeTimeout = d }
 }
 
 // WithHeartbeat configures the heartbeat parameters: ping interval and write
-// timeout. Equivalent to calling WithPingInterval(pingInterval) and
-// WithWriteTimeout(writeTimeout). Validation runs eagerly at call time.
+// timeout. pingInterval controls how often the hub sends Ping frames;
+// writeTimeout sets the context timeout for each write operation (including
+// Ping). If the pong does not arrive within writeTimeout, the connection is
+// considered dead.
+//
+// pingInterval must be in (0, 1m]. writeTimeout must be in (0, 30s].
+// Defaults: pingInterval = 10s, writeTimeout = 10s.
 func WithHeartbeat(pingInterval, writeTimeout time.Duration) HubOption {
-	pi := WithPingInterval(pingInterval)
-	wt := WithWriteTimeout(writeTimeout)
+	pi := withPingInterval(pingInterval)
+	wt := withWriteTimeout(writeTimeout)
 	return func(c *hubConfig) {
 		pi(c)
 		wt(c)

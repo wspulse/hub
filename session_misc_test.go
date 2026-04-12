@@ -590,34 +590,48 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 	wg.Wait()
 }
 
-// ── WithPingInterval ───────────────────────────────────────────────────────
+// ── WithHeartbeat ─────────────────────────────────────────────────────────
 
-func TestWithPingInterval_Valid(t *testing.T) {
+func TestWithHeartbeat_Valid(t *testing.T) {
 	t.Parallel()
 	require.NotPanics(t, func() {
-		srv := wspulse.NewHub(acceptAll, wspulse.WithPingInterval(30*time.Second))
+		srv := wspulse.NewHub(acceptAll, wspulse.WithHeartbeat(30*time.Second, 10*time.Second))
 		srv.Close()
 	})
 }
 
-func TestWithPingInterval_ZeroPanics(t *testing.T) {
+func TestWithHeartbeat_ZeroPingIntervalPanics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.WithPingInterval(0)
+		wspulse.WithHeartbeat(0, 10*time.Second)
 	})
 }
 
-func TestWithPingInterval_NegativePanics(t *testing.T) {
+func TestWithHeartbeat_NegativePingIntervalPanics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.WithPingInterval(-1 * time.Second)
+		wspulse.WithHeartbeat(-1*time.Second, 10*time.Second)
 	})
 }
 
-func TestWithPingInterval_ExceedsMaxPanics(t *testing.T) {
+func TestWithHeartbeat_PingIntervalExceedsMaxPanics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.WithPingInterval(2 * time.Minute)
+		wspulse.WithHeartbeat(2*time.Minute, 10*time.Second)
+	})
+}
+
+func TestWithHeartbeat_ZeroWriteTimeoutPanics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		wspulse.WithHeartbeat(10*time.Second, 0)
+	})
+}
+
+func TestWithHeartbeat_WriteTimeoutExceedsMaxPanics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		wspulse.WithHeartbeat(10*time.Second, 31*time.Second)
 	})
 }
 
