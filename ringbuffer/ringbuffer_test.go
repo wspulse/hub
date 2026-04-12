@@ -136,20 +136,9 @@ func TestPop_D2_RemovesOldestFirst(t *testing.T) {
 	assert.Equal(t, 2, rb.Len())
 }
 
-func TestPop_D3_ZeroesSlotForGC(t *testing.T) {
-	t.Parallel()
-	// Use pointer type to verify GC zeroing (slot must not hold stale reference).
-	rb := ringbuffer.New[*int](2)
-	val := 42
-	rb.Push(&val)
-	rb.Pop()
-	// Peek at the internal state indirectly: push a new item and drain.
-	// After pop, slot should be zeroed — push to same slot, drain, verify order.
-	rb.Push(&val)
-	out := rb.Drain()
-	require.Len(t, out, 1)
-	assert.Equal(t, &val, out[0])
-}
+// TestPop_D3_ZeroesSlotForGC is intentionally omitted from the external test
+// package because it requires access to internal fields to be meaningful.
+// See ringbuffer_internal_test.go for the authoritative GC-zeroing assertion.
 
 func TestPop_D4_Wraparound(t *testing.T) {
 	t.Parallel()

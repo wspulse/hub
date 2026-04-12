@@ -1,6 +1,6 @@
 // Package ringbuffer provides a generic fixed-capacity circular buffer.
 // It is not safe for concurrent use — callers are responsible for
-// synchronisation when shared across goroutines.
+// synchronization when shared across goroutines.
 package ringbuffer
 
 // RingBuffer is a fixed-capacity FIFO circular buffer.
@@ -18,7 +18,7 @@ type RingBuffer[T any] struct {
 // Panics if capacity < 1.
 func New[T any](capacity int) *RingBuffer[T] {
 	if capacity < 1 {
-		panic("ringbuffer: capacity must be at least 1")
+		panic("wspulse: ringbuffer: capacity must be at least 1")
 	}
 	return &RingBuffer[T]{
 		data: make([]T, capacity),
