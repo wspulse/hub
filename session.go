@@ -427,23 +427,44 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 func (s *session) pingPump(ctx context.Context, transport core.Transport) {
 	ticker := s.config.clock.NewTicker(s.config.pingInterval)
 	defer ticker.Stop()
+
+	// Send an initial ping immediately so dead-on-arrival connections are
+	// detected within writeWait instead of waiting a full pingInterval.
+	if !s.doPing(ctx, transport) {
+		return
+	}
+
 	for {
 		select {
 		case <-ticker.C:
-			pingCtx, cancel := context.WithTimeout(ctx, s.config.writeWait)
-			err := transport.Ping(pingCtx)
-			cancel()
-			if err != nil {
-				s.config.metrics.PongTimeout(s.roomID, s.id)
-				s.config.logger.Debug("wspulse: pingPump stopping: pong timeout",
-					zap.String("conn_id", s.id), zap.Error(err))
-				_ = transport.CloseNow()
+			if !s.doPing(ctx, transport) {
 				return
 			}
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+// doPing sends a single Ping with a writeWait timeout. Returns true if the
+// pong arrived successfully, false if the caller should exit.
+func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
+	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeWait)
+	err := transport.Ping(pingCtx)
+	cancel()
+	if err != nil {
+		// context.Canceled means the pump context was cancelled (reconnect/close);
+		// this is not a pong timeout — exit silently without firing the metric.
+		if ctx.Err() != nil {
+			return false
+		}
+		s.config.metrics.PongTimeout(s.roomID, s.id)
+		s.config.logger.Debug("wspulse: pingPump stopping: pong timeout",
+			zap.String("conn_id", s.id), zap.Error(err))
+		_ = transport.CloseNow()
+		return false
+	}
+	return true
 }
 
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
