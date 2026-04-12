@@ -12,16 +12,20 @@ import (
 // mockTransport is a channel-based, deterministic Transport implementation
 // for component tests. Zero network I/O — all read/write/ping operations use
 // Go channels, giving the test full control over timing and data flow.
+//
+// Ping behavior: by default Ping returns nil immediately (healthy). Tests that
+// need to control ping liveness call SetPingHandler to provide a custom
+// function. This ensures tests never depend on real timeouts.
 type mockTransport struct {
 	readCh    chan readResult // test → readPump: inject messages or errors
 	writeCh   chan writeCall  // writePump → test: capture outbound frames
-	pingErr   chan error      // test → pingPump: nil = pong ok; non-nil = simulate timeout
 	closeCh   chan struct{}   // closed once on Close() or CloseNow()
 	closeOnce sync.Once
 
-	mu        sync.Mutex
-	readLimit int64
-	closed    bool
+	mu          sync.Mutex
+	readLimit   int64
+	closed      bool
+	pingHandler func(ctx context.Context) error // nil = always succeed
 }
 
 type readResult struct {
@@ -39,7 +43,6 @@ func newMockTransport() *mockTransport {
 	return &mockTransport{
 		readCh:  make(chan readResult, 16),
 		writeCh: make(chan writeCall, 256),
-		pingErr: make(chan error, 16),
 		closeCh: make(chan struct{}),
 	}
 }
@@ -74,14 +77,24 @@ func (m *mockTransport) Write(_ context.Context, messageType core.MessageType, d
 }
 
 func (m *mockTransport) Ping(ctx context.Context) error {
-	select {
-	case err := <-m.pingErr:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-m.closeCh:
-		return net.ErrClosed
+	m.mu.Lock()
+	handler := m.pingHandler
+	m.mu.Unlock()
+
+	if handler != nil {
+		return handler(ctx)
 	}
+	// Default: healthy — return nil immediately.
+	return nil
+}
+
+// SetPingHandler installs a custom Ping handler for tests that need to control
+// ping liveness (e.g. simulating pong timeout). Pass nil to revert to the
+// default (always succeed).
+func (m *mockTransport) SetPingHandler(fn func(ctx context.Context) error) {
+	m.mu.Lock()
+	m.pingHandler = fn
+	m.mu.Unlock()
 }
 
 func (m *mockTransport) SetReadLimit(limit int64) {

@@ -9,7 +9,7 @@ import (
 
 // Configuration upper bounds — option functions panic if these ceilings are exceeded.
 const (
-	maxPingInterval  = 5 * time.Minute  // WithPingInterval upper bound
+	maxPingInterval  = 1 * time.Minute  // WithPingInterval upper bound
 	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
@@ -132,13 +132,13 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 // hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
 // a timeout derived from WriteWait. If the pong does not arrive within that
 // timeout, the connection is considered dead.
-// d must be in (0, 5m]. Default: 10 s.
+// d must be in (0, 1m]. Default: 10 s.
 func WithPingInterval(d time.Duration) HubOption {
 	if d <= 0 {
 		panic("wspulse: WithPingInterval: duration must be positive")
 	}
 	if d > maxPingInterval {
-		panic("wspulse: WithPingInterval: duration exceeds maximum (5m)")
+		panic("wspulse: WithPingInterval: duration exceeds maximum (1m)")
 	}
 	return func(c *hubConfig) { c.pingInterval = d }
 }

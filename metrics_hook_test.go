@@ -1,6 +1,7 @@
 package wspulse_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -261,14 +262,17 @@ func TestMetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 }
 
 // ── Metrics: pong timeout ───────────────────────────────────────────────────
-// PongTimeout is fired by pingPump when transport.Ping() fails. Use a short
-// pingInterval and feed an error into the mock's pingErr channel.
+// PongTimeout is fired by pingPump when transport.Ping() fails. Install a
+// ping handler that blocks until signalled, then returns an error.
 
 func TestMetricsCollector_PongTimeout(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
 	disconnected := make(chan struct{}, 1)
+
+	// Gate channel: the ping handler blocks until this is closed.
+	failPing := make(chan struct{})
 
 	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
@@ -285,10 +289,21 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 	)
 	t.Cleanup(srv.Close)
 
-	mt := injectAndWait(t, srv, "timeout-conn", "timeout-room", connected)
+	mt := newMockTransport()
+	// Ping succeeds until failPing is closed, then returns an error.
+	mt.SetPingHandler(func(ctx context.Context) error {
+		select {
+		case <-failPing:
+			return errors.New("pong timeout")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	wspulse.InjectTransport(srv, "timeout-conn", "timeout-room", mt)
+	requireReceive(t, connected)
 
-	// Feed a ping failure to simulate pong timeout.
-	mt.pingErr <- errors.New("pong timeout")
+	// Trigger the ping failure.
+	close(failPing)
 
 	requireReceive(t, disconnected)
 

@@ -81,7 +81,7 @@ arrives or the context expires.
 
 | Parameter        | Default | Valid range | Description                                                             |
 | ---------------- | ------- | ----------- | ----------------------------------------------------------------------- |
-| `pingInterval`   | 10 s    | (0, 5 m]    | `pingPump` ticker interval; one synchronous Ping sent per tick          |
+| `pingInterval`   | 10 s    | (0, 1 m]    | `pingPump` ticker interval; one synchronous Ping sent per tick          |
 | `writeWait`      | 10 s    | (0, 30 s]   | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`)   |
 | `maxMessageSize` | 512 B   | [1, 64 MiB] | `readPump SetReadLimit`; exceeded size triggers immediate disconnect    |
 | Send buffer      | 256     | [1, 4096]   | `session.send` channel depth (configurable via `WithSendBufferSize`)    |
@@ -184,7 +184,7 @@ layer.
 ### Architecture
 
 `Connection` (public interface) is implemented by `session` (private struct).
-The session holds a `*websocket.Conn` (`transport`) representing the current
+The session holds a `core.Transport` (`transport`) representing the current
 physical connection. When the WebSocket dies, the session enters a
 **suspended** state and starts a grace timer. If the client reconnects with
 the same `connectionID` before the timer expires, the new WebSocket is
@@ -221,7 +221,7 @@ WS2 client reconnects with same connectionID
   → WS2 sends register(connectionID, transport) to Heart
   → Heart cancels timer
   → Heart attaches WS2, drains ringBuffer to send channel
-  → Heart starts writePump(WS2) + readPump(WS2)
+  → Heart starts readPump(WS2) + writePump(WS2) + pingPump(WS2)
   → onTransportRestore fires; no onConnect / onDisconnect fired
 ```
 

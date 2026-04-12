@@ -617,7 +617,7 @@ func TestWithPingInterval_NegativePanics(t *testing.T) {
 func TestWithPingInterval_ExceedsMaxPanics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		wspulse.WithPingInterval(6 * time.Minute)
+		wspulse.WithPingInterval(2 * time.Minute)
 	})
 }
 

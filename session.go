@@ -575,7 +575,7 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 		select {
 		case data := <-s.send:
 			writeCtx, cancel := context.WithTimeout(ctx, s.config.writeWait)
-			err := transport.Write(writeCtx, core.MessageType(s.config.codec.FrameType()), data)
+			err := transport.Write(writeCtx, s.config.codec.FrameType(), data)
 			cancel()
 			if err != nil {
 				s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
