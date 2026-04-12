@@ -540,9 +540,12 @@ func (s *session) readPump(ctx context.Context, transport core.Transport, h *hea
 //   - Close status 1000 (StatusNormalClosure): remote sent a standard close frame.
 //   - Close status 1001 (StatusGoingAway): remote is shutting down (e.g. browser tab closed).
 //
-// Everything else is abnormal and propagated to OnDisconnect as a
-// non-nil error: ping timeout (CloseNow → net error), TCP drops,
-// protocol errors, and other read failures.
+// Everything else is abnormal and propagated to OnDisconnect /
+// OnTransportDrop as a non-nil error: ping timeout (CloseNow → net
+// error), TCP drops (RST/FIN/EOF), protocol errors, and other read
+// failures. Note: the error value only affects what the callback
+// receives — the suspend-vs-disconnect decision is made by the heart
+// based solely on resumeWindow, independent of the error.
 func isNormalClose(err error) bool {
 	if errors.Is(err, context.Canceled) {
 		return true
