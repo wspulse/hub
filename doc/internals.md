@@ -155,7 +155,8 @@ cause (close frame / network drop / ping timeout)
            if resumeWindow == 0 → remove session, call OnDisconnect
   → session.Close() (via closeOnce): closes done channel
   → bridge goroutine: <-done → pumpCancel()
-  → writePump: ctx.Done() fires, sends Close(StatusNormalClosure),
+  → writePump: ctx.Done() fires, attempts Close(StatusNormalClosure)
+    (best-effort; skipped if the priority-exit path runs first),
     defers CloseNow()
 ```
 

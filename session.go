@@ -509,7 +509,7 @@ func (s *session) readPump(ctx context.Context, transport core.Transport, h *hea
 	for {
 		_, data, err := transport.Read(ctx)
 		if err != nil {
-			if isNormalClose(err) {
+			if ctx.Err() != nil || isNormalClose(err) {
 				s.config.logger.Debug("wspulse: connection closed normally",
 					zap.String("conn_id", s.id),
 				)
