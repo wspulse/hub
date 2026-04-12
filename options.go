@@ -1,6 +1,7 @@
 package wspulse
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -138,7 +139,7 @@ func WithPingInterval(d time.Duration) HubOption {
 		panic("wspulse: WithPingInterval: duration must be positive")
 	}
 	if d > maxPingInterval {
-		panic("wspulse: WithPingInterval: duration exceeds maximum (1m)")
+		panic(fmt.Sprintf("wspulse: WithPingInterval: duration exceeds maximum (%v)", maxPingInterval))
 	}
 	return func(c *hubConfig) { c.pingInterval = d }
 }
@@ -150,7 +151,7 @@ func WithWriteTimeout(d time.Duration) HubOption {
 		panic("wspulse: WithWriteTimeout: duration must be positive")
 	}
 	if d > maxWriteTimeout {
-		panic("wspulse: WithWriteTimeout: duration exceeds maximum (30s)")
+		panic(fmt.Sprintf("wspulse: WithWriteTimeout: duration exceeds maximum (%v)", maxWriteTimeout))
 	}
 	return func(c *hubConfig) { c.writeTimeout = d }
 }
@@ -162,7 +163,7 @@ func WithMaxMessageSize(n int64) HubOption {
 		panic("wspulse: WithMaxMessageSize: n must be at least 1")
 	}
 	if n > maxMsgSizeBytes {
-		panic("wspulse: WithMaxMessageSize: n exceeds maximum (64 MiB)")
+		panic(fmt.Sprintf("wspulse: WithMaxMessageSize: n exceeds maximum (%d)", maxMsgSizeBytes))
 	}
 	return func(c *hubConfig) { c.maxMessageSize = n }
 }
@@ -174,7 +175,7 @@ func WithSendBufferSize(n int) HubOption {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
 	}
 	if n > maxSendBufFrames {
-		panic("wspulse: WithSendBufferSize: n exceeds maximum (4096)")
+		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufFrames))
 	}
 	return func(c *hubConfig) { c.sendBufferSize = n }
 }
