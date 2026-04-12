@@ -237,7 +237,7 @@ func (s *session) Close() error {
 // event loop). A transition goroutine waits for the old writePump to exit,
 // drains the resume buffer, and then starts readPump, writePump, and pingPump.
 // This avoids three problems:
-//   - The heart event loop being blocked for up to writeWait while waiting
+//   - The heart event loop being blocked for up to writeTimeout while waiting
 //     for the old writePump to finish.
 //   - Resume-buffer frames being drained into s.send while the old
 //     writePump is still alive, which could cause the old pump to consume
@@ -421,7 +421,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 
 // pingPump drives the heartbeat ping/pong mechanism on the transport.
 // Sends a Ping at each tick of pingInterval and waits for the pong reply
-// within writeWait. On failure, fires PongTimeout metric and calls
+// within writeTimeout. On failure, fires PongTimeout metric and calls
 // CloseNow() to force-close the transport (without cancelling the context,
 // so other pumps detect the error via their own I/O failures).
 func (s *session) pingPump(ctx context.Context, transport core.Transport) {
@@ -429,7 +429,7 @@ func (s *session) pingPump(ctx context.Context, transport core.Transport) {
 	defer ticker.Stop()
 
 	// Send an initial ping immediately so dead-on-arrival connections are
-	// detected within writeWait instead of waiting a full pingInterval.
+	// detected within writeTimeout instead of waiting a full pingInterval.
 	if !s.doPing(ctx, transport) {
 		return
 	}
@@ -446,10 +446,10 @@ func (s *session) pingPump(ctx context.Context, transport core.Transport) {
 	}
 }
 
-// doPing sends a single Ping with a writeWait timeout. Returns true if the
+// doPing sends a single Ping with a writeTimeout deadline. Returns true if the
 // pong arrived successfully, false if the caller should exit.
 func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
-	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeWait)
+	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
 	err := transport.Ping(pingCtx)
 	cancel()
 	if err != nil {
@@ -574,7 +574,7 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 
 		select {
 		case data := <-s.send:
-			writeCtx, cancel := context.WithTimeout(ctx, s.config.writeWait)
+			writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
 			err := transport.Write(writeCtx, s.config.codec.FrameType(), data)
 			cancel()
 			if err != nil {

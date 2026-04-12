@@ -10,7 +10,7 @@ import (
 // Configuration upper bounds — option functions panic if these ceilings are exceeded.
 const (
 	maxPingInterval  = 1 * time.Minute  // WithPingInterval upper bound
-	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
+	maxWriteTimeout  = 30 * time.Second // WithWriteTimeout upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
 )
@@ -40,7 +40,7 @@ type hubConfig struct {
 	onTransportDrop    func(Connection, error)
 	onTransportRestore func(Connection)
 	pingInterval       time.Duration
-	writeWait          time.Duration
+	writeTimeout       time.Duration
 	maxMessageSize     int64
 	sendBufferSize     int
 	resumeWindow       time.Duration // session resume grace period as a time.Duration (e.g. 5*time.Minute); 0 = disabled
@@ -54,7 +54,7 @@ func defaultConfig(connect ConnectFunc) *hubConfig {
 	return &hubConfig{
 		connect:        connect,
 		pingInterval:   10 * time.Second,
-		writeWait:      10 * time.Second,
+		writeTimeout:   10 * time.Second,
 		maxMessageSize: 512,
 		sendBufferSize: 256,
 		resumeWindow:   0,
@@ -130,7 +130,7 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 
 // WithPingInterval sets the interval between heartbeat pings sent by the
 // hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
-// a timeout derived from WriteWait. If the pong does not arrive within that
+// a timeout derived from WriteTimeout. If the pong does not arrive within that
 // timeout, the connection is considered dead.
 // d must be in (0, 1m]. Default: 10 s.
 func WithPingInterval(d time.Duration) HubOption {
@@ -143,16 +143,28 @@ func WithPingInterval(d time.Duration) HubOption {
 	return func(c *hubConfig) { c.pingInterval = d }
 }
 
-// WithWriteWait sets the deadline for a single write operation on a connection.
-// d must be in (0, 30s].
-func WithWriteWait(d time.Duration) HubOption {
+// WithWriteTimeout sets the timeout for a single write operation on a
+// connection, including Ping. d must be in (0, 30s]. Default: 10 s.
+func WithWriteTimeout(d time.Duration) HubOption {
 	if d <= 0 {
-		panic("wspulse: WithWriteWait: duration must be positive")
+		panic("wspulse: WithWriteTimeout: duration must be positive")
 	}
-	if d > maxWriteWait {
-		panic("wspulse: WithWriteWait: duration exceeds maximum (30s)")
+	if d > maxWriteTimeout {
+		panic("wspulse: WithWriteTimeout: duration exceeds maximum (30s)")
 	}
-	return func(c *hubConfig) { c.writeWait = d }
+	return func(c *hubConfig) { c.writeTimeout = d }
+}
+
+// WithHeartbeat configures the heartbeat parameters: ping interval and write
+// timeout. Equivalent to calling WithPingInterval(pingInterval) and
+// WithWriteTimeout(writeTimeout). Validation runs eagerly at call time.
+func WithHeartbeat(pingInterval, writeTimeout time.Duration) HubOption {
+	pi := WithPingInterval(pingInterval)
+	wt := WithWriteTimeout(writeTimeout)
+	return func(c *hubConfig) {
+		pi(c)
+		wt(c)
+	}
 }
 
 // WithMaxMessageSize sets the maximum size in bytes for inbound messages.

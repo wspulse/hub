@@ -52,7 +52,7 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
   on exit (via defer) to ensure the underlying socket is always released.
   On graceful shutdown (`ctx.Done()`), it first sends a close frame via
   `transport.Close(StatusNormalClosure, "")`.
-- `pingPump` sends periodic Pings with a `writeWait` timeout. On failure it
+- `pingPump` sends periodic Pings with a `writeTimeout` timeout. On failure it
   fires the `PongTimeout` metric and calls `transport.CloseNow()` to force the
   transport closed, causing `readPump` to detect the error and signal the heart.
   An initial ping is sent immediately on startup to detect dead-on-arrival
@@ -82,7 +82,7 @@ arrives or the context expires.
 | Parameter        | Default | Valid range | Description                                                             |
 | ---------------- | ------- | ----------- | ----------------------------------------------------------------------- |
 | `pingInterval`   | 10 s    | (0, 1 m]    | `pingPump` ticker interval; one synchronous Ping sent per tick          |
-| `writeWait`      | 10 s    | (0, 30 s]   | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`)   |
+| `writeTimeout`      | 10 s    | (0, 30 s]   | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`)   |
 | `maxMessageSize` | 512 B   | [1, 64 MiB] | `readPump SetReadLimit`; exceeded size triggers immediate disconnect    |
 | Send buffer      | 256     | [1, 4096]   | `session.send` channel depth (configurable via `WithSendBufferSize`)    |
 
@@ -91,7 +91,7 @@ Configuring non-default values:
 ```go
 wspulse.NewHub(connect,
     wspulse.WithPingInterval(30*time.Second),
-    wspulse.WithWriteWait(15*time.Second),
+    wspulse.WithWriteTimeout(15*time.Second),
     wspulse.WithMaxMessageSize(4096),
 )
 ```
@@ -99,7 +99,7 @@ wspulse.NewHub(connect,
 ### Operational details
 
 1. **Ping dispatch** — `pingPump` calls `transport.Ping(ctx)` with a
-   `context.WithTimeout(pumpCtx, writeWait)`. The call blocks until the Pong
+   `context.WithTimeout(pumpCtx, writeTimeout)`. The call blocks until the Pong
    arrives or the timeout fires. An initial ping is sent immediately on
    startup (before the first ticker tick) to detect dead-on-arrival
    connections.
@@ -246,11 +246,11 @@ channel before the new `writePump` starts, ensuring ordering is preserved.
 The total time a client has to reconnect is:
 
 ```
-effective window = pingInterval + writeWait + resumeWindow
+effective window = pingInterval + writeTimeout + resumeWindow
 ```
 
 - `pingInterval` (default 10 s): worst-case wait until the next ping fires.
-- `writeWait` (default 10 s): Ping timeout before the server detects the dead
+- `writeTimeout` (default 10 s): Ping timeout before the server detects the dead
   transport.
 - `resumeWindow` (configured via `WithResumeWindow`): additional grace period
   after detection.

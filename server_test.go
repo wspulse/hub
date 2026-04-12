@@ -82,25 +82,47 @@ func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 
 // ── Option validation tests ───────────────────────────────────────────────────
 
-func TestWithWriteWait_ValidDuration_Accepted(t *testing.T) {
+func TestWithWriteTimeout_ValidDuration_Accepted(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll,
-		wspulse.WithWriteWait(5*time.Second),
+		wspulse.WithWriteTimeout(5*time.Second),
 	)
 	t.Cleanup(srv.Close)
 }
 
-func TestWithWriteWait_Zero_Panics(t *testing.T) {
+func TestWithWriteTimeout_Zero_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		_ = wspulse.WithWriteWait(0)
+		_ = wspulse.WithWriteTimeout(0)
 	})
 }
 
-func TestWithWriteWait_ExceedsMax_Panics(t *testing.T) {
+func TestWithWriteTimeout_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		_ = wspulse.WithWriteWait(31 * time.Second)
+		_ = wspulse.WithWriteTimeout(31 * time.Second)
+	})
+}
+
+func TestWithHeartbeat_SetsBothParams(t *testing.T) {
+	t.Parallel()
+	srv := wspulse.NewHub(acceptAll,
+		wspulse.WithHeartbeat(15*time.Second, 5*time.Second),
+	)
+	t.Cleanup(srv.Close)
+}
+
+func TestWithHeartbeat_InvalidPingInterval_Panics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		_ = wspulse.WithHeartbeat(0, 10*time.Second)
+	})
+}
+
+func TestWithHeartbeat_InvalidWriteTimeout_Panics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		_ = wspulse.WithHeartbeat(10*time.Second, 0)
 	})
 }
 
