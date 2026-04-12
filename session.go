@@ -459,7 +459,7 @@ func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
 			return false
 		}
 		s.config.metrics.PongTimeout(s.roomID, s.id)
-		s.config.logger.Debug("wspulse: pingPump stopping: pong timeout",
+		s.config.logger.Debug("wspulse: pingPump stopping: ping failed",
 			zap.String("conn_id", s.id), zap.Error(err))
 		_ = transport.CloseNow()
 		return false
