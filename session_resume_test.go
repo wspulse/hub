@@ -863,7 +863,7 @@ func TestResume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 
 // ── Resume: writePump stops on context cancellation ─────────────────────────────────────
 
-func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
+func TestResume_WritePumpStopsOnContextCancellation(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -921,7 +921,7 @@ func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 
 // ── Resume: writePump exits via context cancellation (long ping) ────────────────────────
 
-func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
+func TestResume_WritePumpExitsViaContextCancellation(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)

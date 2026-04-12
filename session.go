@@ -587,7 +587,14 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 		case <-ctx.Done():
 			s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
 				zap.String("conn_id", s.id))
-			_ = transport.Close(core.StatusNormalClosure, "")
+			// Send a graceful close frame only on session shutdown (s.done
+			// closed), not on reconnect swap where speed matters and the
+			// old transport may already be dead.
+			select {
+			case <-s.done:
+				_ = transport.Close(core.StatusNormalClosure, "")
+			default:
+			}
 			return
 		}
 	}

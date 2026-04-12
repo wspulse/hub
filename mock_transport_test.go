@@ -58,7 +58,13 @@ func (m *mockTransport) Read(ctx context.Context) (core.MessageType, []byte, err
 	}
 }
 
-func (m *mockTransport) Write(_ context.Context, messageType core.MessageType, data []byte) error {
+func (m *mockTransport) Write(ctx context.Context, messageType core.MessageType, data []byte) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
