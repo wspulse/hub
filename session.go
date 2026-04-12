@@ -374,6 +374,7 @@ func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete 
 			// writePump's defer will never close it. Without this, the
 			// underlying TCP connection and file descriptor leak.
 			_ = transport.CloseNow()
+			pumpCancel()
 			close(pumpDone)
 			return
 		}
@@ -578,6 +579,11 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 			err := transport.Write(writeCtx, s.config.codec.FrameType(), data)
 			cancel()
 			if err != nil {
+				if ctx.Err() != nil {
+					s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+						zap.String("conn_id", s.id))
+					return
+				}
 				s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
 				return
 			}
