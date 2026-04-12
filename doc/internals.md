@@ -21,7 +21,7 @@ belong to the consumers of wspulse/hub.
 ## 1. Goroutine Model
 
 Every accepted WebSocket connection spawns exactly **three pump goroutines**
-plus one short-lived **bridge goroutine**:
+plus one dedicated **bridge goroutine**:
 
 ```
 attachWS(transport)
@@ -33,8 +33,8 @@ attachWS(transport)
 
 All pump goroutines share a single `pumpCtx` (derived from
 `context.Background()`) and are cancelled together via `pumpCancel()`.
-Neither goroutine is accessible to the application layer; the `Connection`
-interface exposes only `Send`, `Close`, and `Done`.
+None of these goroutines are accessible to the application layer; the
+`Connection` interface exposes only `Send`, `Close`, and `Done`.
 
 ### Bridge goroutine
 
