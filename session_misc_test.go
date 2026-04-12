@@ -587,6 +587,37 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 	wg.Wait()
 }
 
+// ── WithPingInterval ───────────────────────────────────────────────────────
+
+func TestWithPingInterval_Valid(t *testing.T) {
+	t.Parallel()
+	require.NotPanics(t, func() {
+		srv := wspulse.NewHub(acceptAll, wspulse.WithPingInterval(30*time.Second))
+		srv.Close()
+	})
+}
+
+func TestWithPingInterval_ZeroPanics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		wspulse.WithPingInterval(0)
+	})
+}
+
+func TestWithPingInterval_NegativePanics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		wspulse.WithPingInterval(-1 * time.Second)
+	})
+}
+
+func TestWithPingInterval_ExceedsMaxPanics(t *testing.T) {
+	t.Parallel()
+	require.Panics(t, func() {
+		wspulse.WithPingInterval(6 * time.Minute)
+	})
+}
+
 // ── HubShutdown ReadPump inline cleanup ─────────────────────────────────────
 
 func TestHubShutdown_ReadPumpInlineCleanup(t *testing.T) {

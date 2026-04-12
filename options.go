@@ -11,6 +11,7 @@ import (
 const (
 	maxPingPeriod    = 5 * time.Minute  // WithHeartbeat: pingPeriod upper bound
 	maxPongWait      = 10 * time.Minute // WithHeartbeat: pongWait upper bound
+	maxPingInterval  = 5 * time.Minute  // WithPingInterval upper bound
 	maxWriteWait     = 30 * time.Second // WithWriteWait upper bound
 	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
 	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
@@ -42,6 +43,7 @@ type hubConfig struct {
 	onTransportRestore      func(Connection)
 	pingPeriod              time.Duration
 	pongWait                time.Duration
+	pingInterval            time.Duration
 	writeWait               time.Duration
 	maxMessageSize          int64
 	sendBufferSize          int
@@ -60,6 +62,7 @@ func defaultConfig(connect ConnectFunc) *hubConfig {
 		connect:                 connect,
 		pingPeriod:              10 * time.Second,
 		pongWait:                30 * time.Second,
+		pingInterval:            10 * time.Second,
 		writeWait:               10 * time.Second,
 		maxMessageSize:          512,
 		sendBufferSize:          256,
@@ -154,6 +157,21 @@ func WithHeartbeat(pingPeriod, pongWait time.Duration) HubOption {
 		c.pingPeriod = pingPeriod
 		c.pongWait = pongWait
 	}
+}
+
+// WithPingInterval sets the interval between heartbeat pings sent by the
+// hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
+// a timeout derived from WriteWait. If the pong does not arrive within that
+// timeout, the connection is considered dead.
+// d must be in (0, 5m]. Default: 10 s.
+func WithPingInterval(d time.Duration) HubOption {
+	if d <= 0 {
+		panic("wspulse: WithPingInterval: duration must be positive")
+	}
+	if d > maxPingInterval {
+		panic("wspulse: WithPingInterval: duration exceeds maximum (5m)")
+	}
+	return func(c *hubConfig) { c.pingInterval = d }
 }
 
 // WithWriteWait sets the deadline for a single write operation on a connection.
