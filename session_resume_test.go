@@ -861,9 +861,9 @@ func TestResume_DuplicateID_WhileConnected_KicksOld(t *testing.T) {
 	requireReceive(t, kicked)
 }
 
-// ── Resume: writePump stops on pumpQuit ─────────────────────────────────────
+// ── Resume: writePump stops on context cancellation ─────────────────────────────────────
 
-func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
+func TestResume_WritePumpStopsOnContextCancellation(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -903,14 +903,14 @@ func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "pre-suspend", f.Event)
 
-	// Close transport to suspend, writePump gets pumpQuit.
+	// Close transport to suspend, writePump gets context cancellation.
 	mt1.InjectError(errors.New("transport closed"))
 	requireReceive(t, dropped)
 
 	// Reconnect — triggers attachWS, which waits for old pumpDone.
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
-	// If old writePump didn't exit via pumpQuit, the new pump wouldn't start.
+	// If old writePump didn't exit via context cancellation, the new pump wouldn't start.
 	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "post-resume"}))
 	w2, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected post-resume write")
@@ -919,9 +919,9 @@ func TestResume_WritePumpStopsOnPumpQuit(t *testing.T) {
 	assert.Equal(t, "post-resume", f2.Event)
 }
 
-// ── Resume: writePump exits via pumpQuit (long ping) ────────────────────────
+// ── Resume: writePump exits via context cancellation (long ping) ────────────────────────
 
-func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
+func TestResume_WritePumpExitsViaContextCancellation(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -930,7 +930,7 @@ func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithResumeWindow(5*time.Second),
-		wspulse.WithHeartbeat(5*time.Second, 30*time.Second), // long ping period
+		wspulse.WithPingInterval(5*time.Second), // long ping interval
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
 			case connected <- struct{}{}:
@@ -955,7 +955,7 @@ func TestResume_WritePumpExitsViaPumpQuit(t *testing.T) {
 	mt1 := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Close client transport to trigger suspend. With long ping period,
-	// writePump won't attempt any writes before pumpQuit fires.
+	// writePump won't attempt any writes before context cancellation fires.
 	mt1.InjectError(errors.New("transport closed"))
 	requireReceive(t, dropped)
 

@@ -20,28 +20,46 @@ belong to the consumers of wspulse/hub.
 
 ## 1. Goroutine Model
 
-Every accepted WebSocket connection spawns exactly **two goroutines**:
+Every accepted WebSocket connection spawns exactly **three pump goroutines**
+plus one dedicated **bridge goroutine**:
 
 ```
-ServeHTTP
-  ├─ go writePump(transport) — drains session.send channel, drives Ping heartbeat
-  └─ go readPump(transport, heart) — reads inbound frames, calls OnMessage, signals heart on exit
+attachWS(transport)
+  ├─ go bridge          — propagates close(session.done) → pumpCancel()
+  ├─ go readPump(ctx)   — reads inbound frames, calls OnMessage, signals heart on exit
+  ├─ go writePump(ctx)  — drains session.send channel, sole writer of application data on transport
+  └─ go pingPump(ctx)   — drives Ping heartbeat, fires PongTimeout on failure
 ```
 
-Both goroutines are owned by the `session` value. Neither goroutine is
-accessible to the application layer; the `Connection` interface exposes only
-`Send`, `Close`, and `Done`.
+All pump goroutines share a single `pumpCtx` (derived from
+`context.Background()`) and are cancelled together via `pumpCancel()`.
+None of these goroutines are accessible to the application layer; the
+`Connection` interface exposes only `Send`, `Close`, and `Done`.
+
+### Bridge goroutine
+
+The bridge goroutine links the session lifetime (`session.done`) to the pump
+lifetime (`pumpCtx`). When `session.Close()` closes `done`, the bridge calls
+`pumpCancel()`, causing all three pumps to exit. If `pumpCtx` is cancelled
+first (e.g. by `detachWS` during resume), the bridge exits without effect.
 
 ### Goroutine exit and cleanup
 
-- `readPump` owns the transport-died signal: when `ReadMessage()` returns an
-  error (normal close, network drop, or read deadline exceeded) `readPump`
+- `readPump` owns the transport-died signal: when `transport.Read(ctx)` returns
+  an error (normal close, network drop, or context cancellation) `readPump`
   sends a `transportDied` message to the heart and exits.
-- `writePump` owns the TCP connection close call: it calls `transport.Close()` on
-  exit to ensure the underlying socket is always released.
+- `writePump` owns the TCP connection close call: it calls `transport.CloseNow()`
+  on exit (via defer) to ensure the underlying socket is always released.
+  On graceful shutdown (`ctx.Done()`), it first sends a close frame via
+  `transport.Close(StatusNormalClosure, "")`.
+- `pingPump` sends periodic Pings with a `writeTimeout` timeout. On failure it
+  fires the `PongTimeout` metric and calls `transport.CloseNow()` to force the
+  transport closed, causing `readPump` to detect the error and signal the heart.
+  An initial ping is sent immediately on startup to detect dead-on-arrival
+  connections without waiting a full `pingInterval`.
 - `session.done` is a `chan struct{}` closed exactly once (via `closeOnce`) by
-  `session.Close()`. Both goroutines select on `<-session.done` as a unified
-  shutdown signal.
+  `session.Close()`. The bridge goroutine translates this into `pumpCancel()`
+  so all pumps exit via context cancellation.
 - The `session.send` channel is **never closed by the sender** to avoid
   send-on-closed-channel panics; it is simply abandoned once `done` is
   closed.
@@ -54,48 +72,49 @@ accessible to the application layer; the `Connection` interface exposes only
 ## 2. Heartbeat Mechanism
 
 Heartbeats use **RFC 6455 protocol-layer Ping / Pong control frames**,
-completely separate from application JSON messages.
+completely separate from application JSON messages. The heartbeat is driven
+by a dedicated `pingPump` goroutine using `coder/websocket`'s synchronous
+`Ping(ctx)` API, which sends a Ping frame and blocks until the Pong reply
+arrives or the context expires.
 
 ### Parameters
 
-| Parameter        | Default | Valid range        | Description                                                                   |
-| ---------------- | ------- | ------------------ | ----------------------------------------------------------------------------- |
-| `pingPeriod`     | 10 s    | (0, 5 m]           | `writePump` ticker interval; one `PingMessage` sent every 10 s                |
-| `pongWait`       | 30 s    | (pingPeriod, 10 m] | Rolling `ReadDeadline` window; reset to `now + 30 s` each time a Pong arrives |
-| `writeWait`      | 10 s    | (0, 30 s]          | Per-write deadline, **including the Ping control frame itself**               |
-| `maxMessageSize` | 512 B   | [1, 64 MiB]        | `readPump SetReadLimit`; exceeded size triggers immediate disconnect          |
-| Send buffer      | 256     | [1, 4096]          | `session.send` channel depth (configurable via `WithSendBufferSize`)          |
+| Parameter        | Default | Valid range | Description                                                             |
+| ---------------- | ------- | ----------- | ----------------------------------------------------------------------- |
+| `pingInterval`   | 10 s    | (0, 1 m]    | `pingPump` ticker interval; one synchronous Ping sent per tick          |
+| `writeTimeout`      | 10 s    | (0, 30 s]   | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`)   |
+| `maxMessageSize` | 512 B   | [1, 64 MiB] | `readPump SetReadLimit`; exceeded size triggers immediate disconnect    |
+| Send buffer      | 256     | [1, 4096]   | `session.send` channel depth (configurable via `WithSendBufferSize`)    |
 
 Configuring non-default values:
 
 ```go
 wspulse.NewHub(connect,
-    wspulse.WithHeartbeat(30*time.Second, 90*time.Second),  // pingPeriod, pongWait
-    wspulse.WithWriteWait(15*time.Second),
+    wspulse.WithPingInterval(30*time.Second),
+    wspulse.WithWriteTimeout(15*time.Second),
     wspulse.WithMaxMessageSize(4096),
 )
 ```
 
 ### Operational details
 
-1. **Ping dispatch** — `writePump` calls `SetWriteDeadline(now + writeWait)` then
-   sends `websocket.PingMessage` (empty payload). If the write fails, `writePump`
-   exits and triggers teardown.
+1. **Ping dispatch** — `pingPump` calls `transport.Ping(ctx)` with a
+   `context.WithTimeout(pumpCtx, writeTimeout)`. The call blocks until the Pong
+   arrives or the timeout fires. An initial ping is sent immediately on
+   startup (before the first ticker tick) to detect dead-on-arrival
+   connections.
 
-2. **Pong handling** — `readPump` installs a `SetPongHandler` that fires on every
-   incoming Pong:
-   - `SetReadDeadline(now + pongWait)` — rolls the deadline forward; connection
-     stays alive as long as at least one Pong arrives every `pongWait` period.
+2. **Timeout disconnect** — If `Ping(ctx)` returns an error (timeout or
+   network failure), `pingPump` fires the `PongTimeout` metric and calls
+   `transport.CloseNow()` to force-close the underlying connection. This
+   causes `readPump`'s `Read(ctx)` to return an error, which triggers the
+   standard teardown path via `transportDiedMessage`.
 
-3. **Client-side Pong** — Standard WebSocket implementations (browsers, Gorilla)
-   reply to Ping automatically; the application layer does not need to handle this.
-   Note: native clients (Go, Node.js) **also** send their own independent Ping to
-   the server for client-side dead-connection detection. The server auto-replies
-   to these via gorilla's default `PingHandler`. See the protocol spec for details.
-
-4. **Timeout disconnect** — If no Pong arrives within `pongWait`, `ReadMessage()`
-   returns an `i/o timeout` error. `readPump` exits, unregisters the connection
-   from the heart, and the `OnDisconnect` callback fires.
+3. **Client-side Pong** — Standard WebSocket implementations (browsers,
+   `coder/websocket`) reply to Ping automatically; the application layer does
+   not need to handle this. Native clients may also send their own Ping for
+   client-side dead-connection detection; `coder/websocket` auto-replies to
+   these.
 
 ---
 
@@ -129,13 +148,16 @@ metric.
 Normal and abnormal teardown follow the same cleanup path:
 
 ```
-cause (close frame / network drop / ReadDeadline)
-  → readPump: ReadMessage() returns error, sends transportDiedMessage to heart
+cause (close frame / network drop / ping timeout)
+  → pingPump: Ping fails → CloseNow() → readPump's Read unblocks
+  → readPump: Read(ctx) returns error, sends transportDiedMessage to heart
   → heart: if resumeWindow > 0 → suspend session (start grace timer)
            if resumeWindow == 0 → remove session, call OnDisconnect
   → session.Close() (via closeOnce): closes done channel
-  → writePump: selects <-pumpQuit or <-session.done, stops ticker,
-    calls transport.Close()
+  → bridge goroutine: <-done → pumpCancel()
+  → writePump: ctx.Done() fires, sends Close(StatusNormalClosure) only
+    on session shutdown (s.done closed); skipped on reconnect swap
+    and if the priority-exit path runs first. Defers CloseNow()
 ```
 
 Explicit teardown via `Hub.Kick(connectionID)` takes a different path — the
@@ -163,7 +185,7 @@ layer.
 ### Architecture
 
 `Connection` (public interface) is implemented by `session` (private struct).
-The session holds a `*websocket.Conn` (`transport`) representing the current
+The session holds a `core.Transport` (`transport`) representing the current
 physical connection. When the WebSocket dies, the session enters a
 **suspended** state and starts a grace timer. If the client reconnects with
 the same `connectionID` before the timer expires, the new WebSocket is
@@ -200,7 +222,7 @@ WS2 client reconnects with same connectionID
   → WS2 sends register(connectionID, transport) to Heart
   → Heart cancels timer
   → Heart attaches WS2, drains ringBuffer to send channel
-  → Heart starts writePump(WS2) + readPump(WS2)
+  → Heart starts readPump(WS2) + writePump(WS2) + pingPump(WS2)
   → onTransportRestore fires; no onConnect / onDisconnect fired
 ```
 
@@ -224,10 +246,12 @@ channel before the new `writePump` starts, ensuring ordering is preserved.
 The total time a client has to reconnect is:
 
 ```
-effective window = pongWait + resumeWindow
+effective window = pingInterval + writeTimeout + resumeWindow
 ```
 
-- `pongWait` (default 30 s): time before the server detects the dead transport.
+- `pingInterval` (default 10 s): worst-case wait until the next ping fires.
+- `writeTimeout` (default 10 s): Ping timeout before the server detects the dead
+  transport.
 - `resumeWindow` (configured via `WithResumeWindow`): additional grace period
   after detection.
 
@@ -300,7 +324,7 @@ must be safe for concurrent use.
 | `ResumeAttempt`         | heart goroutine       |
 | `MessageBroadcast`      | heart goroutine       |
 | `MessageReceived`       | readPump goroutine  |
-| `PongTimeout`           | readPump goroutine  |
+| `PongTimeout`           | pingPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
 | `FrameDropped`          | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |

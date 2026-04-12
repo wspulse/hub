@@ -59,26 +59,6 @@ func TestWithCodec_Nil_Panics(t *testing.T) {
 	})
 }
 
-func TestWithHeartbeat_InvalidParams_Panics(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name       string
-		ping, pong time.Duration
-	}{
-		{"ping == pong", 10 * time.Second, 10 * time.Second},
-		{"ping > pong", 30 * time.Second, 10 * time.Second},
-		{"ping zero", 0, 10 * time.Second},
-		{"pong zero", 10 * time.Second, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Panics(t, func() {
-				_ = wspulse.WithHeartbeat(tc.ping, tc.pong)
-			}, "expected panic for pingPeriod=%v pongWait=%v", tc.ping, tc.pong)
-		})
-	}
-}
-
 func TestNewHub_NilConnect_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
@@ -102,47 +82,25 @@ func TestWithMaxMessageSize_Zero_Panics(t *testing.T) {
 
 // ── Option validation tests ───────────────────────────────────────────────────
 
-func TestWithHeartbeat_ValidParams_Accepted(t *testing.T) {
+func TestWithWriteTimeout_ValidDuration_Accepted(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll,
-		wspulse.WithHeartbeat(5*time.Second, 15*time.Second),
+		wspulse.WithWriteTimeout(5*time.Second),
 	)
 	t.Cleanup(srv.Close)
 }
 
-func TestWithHeartbeat_PingExceedsMax_Panics(t *testing.T) {
+func TestWithWriteTimeout_Zero_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		_ = wspulse.WithHeartbeat(6*time.Minute, 10*time.Minute)
+		_ = wspulse.WithWriteTimeout(0)
 	})
 }
 
-func TestWithHeartbeat_PongExceedsMax_Panics(t *testing.T) {
+func TestWithWriteTimeout_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
-		_ = wspulse.WithHeartbeat(1*time.Minute, 11*time.Minute)
-	})
-}
-
-func TestWithWriteWait_ValidDuration_Accepted(t *testing.T) {
-	t.Parallel()
-	srv := wspulse.NewHub(acceptAll,
-		wspulse.WithWriteWait(5*time.Second),
-	)
-	t.Cleanup(srv.Close)
-}
-
-func TestWithWriteWait_Zero_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		_ = wspulse.WithWriteWait(0)
-	})
-}
-
-func TestWithWriteWait_ExceedsMax_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		_ = wspulse.WithWriteWait(31 * time.Second)
+		_ = wspulse.WithWriteTimeout(31 * time.Second)
 	})
 }
 
@@ -172,13 +130,6 @@ func TestWithSendBufferSize_ExceedsMax_Panics(t *testing.T) {
 	t.Parallel()
 	require.Panics(t, func() {
 		_ = wspulse.WithSendBufferSize(4097)
-	})
-}
-
-func TestWithCheckOrigin_Nil_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		_ = wspulse.WithCheckOrigin(nil)
 	})
 }
 
@@ -276,26 +227,6 @@ func TestWithOnTransportRestore_AcceptsNil(t *testing.T) {
 	srv := wspulse.NewHub(acceptAll,
 		wspulse.WithOnTransportRestore(nil),
 	)
-	t.Cleanup(srv.Close)
-}
-
-func TestWithUpgraderBufferSize_Zero_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(0, 1024))
-	})
-}
-
-func TestWithUpgraderBufferSize_NegativeWriteSize_Panics(t *testing.T) {
-	t.Parallel()
-	require.Panics(t, func() {
-		wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(1024, -1))
-	})
-}
-
-func TestWithUpgraderBufferSize_ValidSizes_Accepted(t *testing.T) {
-	t.Parallel()
-	srv := wspulse.NewHub(acceptAll, wspulse.WithUpgraderBufferSize(4096, 4096))
 	t.Cleanup(srv.Close)
 }
 
