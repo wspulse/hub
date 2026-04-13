@@ -1,26 +1,26 @@
-// Package ringbuffer provides a generic fixed-capacity circular buffer.
+// Package ring provides a generic fixed-capacity circular buffer.
 // It is not safe for concurrent use — callers are responsible for
 // synchronization when shared across goroutines.
-package ringbuffer
+package ring
 
-// RingBuffer is a fixed-capacity FIFO circular buffer.
+// Buffer is a fixed-capacity FIFO circular buffer.
 //
 // The zero value is not usable; create instances with [New].
-type RingBuffer[T any] struct {
+type Buffer[T any] struct {
 	data []T
 	head int // index of the oldest element
 	size int // number of elements currently stored
 	cap  int // maximum capacity
 }
 
-// New creates a RingBuffer with the given capacity.
+// New creates a Buffer with the given capacity.
 //
 // Panics if capacity < 1.
-func New[T any](capacity int) *RingBuffer[T] {
+func New[T any](capacity int) *Buffer[T] {
 	if capacity < 1 {
-		panic("wspulse: ringbuffer: capacity must be at least 1")
+		panic("wspulse: ring: capacity must be at least 1")
 	}
-	return &RingBuffer[T]{
+	return &Buffer[T]{
 		data: make([]T, capacity),
 		cap:  capacity,
 	}
@@ -28,7 +28,7 @@ func New[T any](capacity int) *RingBuffer[T] {
 
 // Push appends item to the back of the buffer.
 // Returns false if the buffer is full; the item is not added.
-func (rb *RingBuffer[T]) Push(item T) bool {
+func (rb *Buffer[T]) Push(item T) bool {
 	if rb.size == rb.cap {
 		return false
 	}
@@ -40,7 +40,7 @@ func (rb *RingBuffer[T]) Push(item T) bool {
 // ForcePush appends item to the back of the buffer. If the buffer is full,
 // the oldest item is evicted to make room.
 // Returns true if an item was evicted.
-func (rb *RingBuffer[T]) ForcePush(item T) (evicted bool) {
+func (rb *Buffer[T]) ForcePush(item T) (evicted bool) {
 	if rb.size == rb.cap {
 		// Overwrite the oldest slot and advance head.
 		rb.data[rb.head] = item
@@ -54,7 +54,7 @@ func (rb *RingBuffer[T]) ForcePush(item T) (evicted bool) {
 
 // Pop removes and returns the oldest item.
 // Returns the zero value of T and false if the buffer is empty.
-func (rb *RingBuffer[T]) Pop() (T, bool) {
+func (rb *Buffer[T]) Pop() (T, bool) {
 	if rb.size == 0 {
 		var zero T
 		return zero, false
@@ -69,7 +69,7 @@ func (rb *RingBuffer[T]) Pop() (T, bool) {
 
 // Peek returns the oldest item without removing it.
 // Returns the zero value of T and false if the buffer is empty.
-func (rb *RingBuffer[T]) Peek() (T, bool) {
+func (rb *Buffer[T]) Peek() (T, bool) {
 	if rb.size == 0 {
 		var zero T
 		return zero, false
@@ -80,7 +80,7 @@ func (rb *RingBuffer[T]) Peek() (T, bool) {
 // Drain removes and returns all items in FIFO order.
 // Returns nil if the buffer is empty.
 // After Drain, the buffer is empty and all internal slots are zeroed.
-func (rb *RingBuffer[T]) Drain() []T {
+func (rb *Buffer[T]) Drain() []T {
 	if rb.size == 0 {
 		return nil
 	}
@@ -97,17 +97,17 @@ func (rb *RingBuffer[T]) Drain() []T {
 }
 
 // Len returns the number of items currently in the buffer.
-func (rb *RingBuffer[T]) Len() int {
+func (rb *Buffer[T]) Len() int {
 	return rb.size
 }
 
 // Cap returns the maximum number of items the buffer can hold.
-func (rb *RingBuffer[T]) Cap() int {
+func (rb *Buffer[T]) Cap() int {
 	return rb.cap
 }
 
 // Clear removes all items and releases slot references for GC.
-func (rb *RingBuffer[T]) Clear() {
+func (rb *Buffer[T]) Clear() {
 	var zero T
 	for i := range rb.size {
 		rb.data[(rb.head+i)%rb.cap] = zero

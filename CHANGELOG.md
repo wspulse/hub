@@ -10,6 +10,17 @@
 - Removed `WithCheckOrigin(fn)` — origin validation belongs to the host HTTP server/middleware
 - Removed `WithUpgraderBufferSize(readSize, writeSize)` — gorilla-specific option
 
+### Fixed
+
+- **Drop-oldest TOCTOU race** (hub#44): `session.send chan []byte` replaced with
+  `sendQueue` (mutex-guarded `ring.Buffer` + `sync.Cond`). The previous three-select
+  drop-oldest pattern had two race windows where the oldest frame could be consumed
+  by another goroutine between selects, causing the new frame to be silently dropped
+  even when the buffer was not full.
+- **Internal package rename**: `github.com/wspulse/hub/ringbuffer` renamed to
+  `github.com/wspulse/hub/ring`; type `RingBuffer` renamed to `Buffer` to eliminate
+  the `ring.RingBuffer` stutter.
+
 ### Changed
 
 - Goroutine model changed from 2 (readPump + writePump) to 3+1 (readPump + writePump + pingPump + bridge goroutine)
