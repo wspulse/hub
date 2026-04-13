@@ -27,7 +27,7 @@ plus one dedicated **bridge goroutine**:
 attachWS(transport)
   ├─ go bridge          — propagates close(session.done) → pumpCancel()
   ├─ go readPump(ctx)   — reads inbound frames, calls OnMessage, signals heart on exit
-  ├─ go writePump(ctx)  — drains session.send channel, sole writer on transport
+  ├─ go writePump(ctx)  — drains session.send channel, sole writer of application data on transport
   └─ go pingPump(ctx)   — drives Ping heartbeat, fires PongTimeout on failure
 ```
 

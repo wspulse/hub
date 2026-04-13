@@ -51,7 +51,7 @@ srv := wspulse.NewHub(
     wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
         log.Printf("disconnected: %s", connection.ID())
     }),
-    wspulse.WithHeartbeat(10*time.Second, 30*time.Second),
+    wspulse.WithPingInterval(10*time.Second),
     wspulse.WithResumeWindow(30*time.Second),
 )
 
@@ -136,12 +136,11 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | `WithOnTransportDrop(fn)`   | —                                    |
 | `WithOnTransportRestore(fn)`| —                                    |
 | `WithResumeWindow(d)`        | 0 (disabled)                         |
-| `WithHeartbeat(ping, pong)` | 10 s / 30 s                          |
-| `WithWriteWait(d)`          | 10 s                                 |
+| `WithPingInterval(d)`       | 10 s                                 |
+| `WithWriteTimeout(d)`       | 10 s                                 |
 | `WithMaxMessageSize(n)`     | 512 B                                |
 | `WithSendBufferSize(n)`     | 256 frames                           |
 | `WithCodec(c)`              | JSONCodec                            |
-| `WithCheckOrigin(fn)`       | allow all                            |
 | `WithLogger(l)`             | zap.NewNop() — accepts `*zap.Logger` |
 | `WithMetrics(mc)`           | NoopCollector — accepts `MetricsCollector` |
 
@@ -152,7 +151,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 - **Room-based routing** — connections are partitioned into rooms; broadcast targets a single room.
 - **Pluggable auth** — `ConnectFunc` runs during HTTP Upgrade, before any WebSocket frames are exchanged.
 - **Session resumption** — opt-in via `WithResumeWindow(d)`. When a transport drops, the session is suspended for `d` before firing `OnDisconnect`. If the client reconnects with the same `connectionID` within that window, the new WebSocket is swapped in transparently — no `OnConnect` / `OnDisconnect` callbacks fire, and buffered frames are replayed in order. Disabled by default.
-- **Automatic heartbeat** — server-side Ping / Pong with configurable intervals (`WithHeartbeat`).
+- **Automatic heartbeat** — server-side Ping / Pong with configurable interval (`WithPingInterval`) and write timeout (`WithWriteTimeout`).
 - **Backpressure** — bounded per-connection send buffer; oldest frame is dropped on overflow during broadcast.
 - **Swappable codec** — JSON by default; implement the `Codec` interface to plug in any encoding (binary, Protobuf, MessagePack, etc.).
 - **Kick** — `Hub.Kick(connectionID)` always destroys the session immediately, bypassing the resume window.

@@ -57,7 +57,7 @@ const (
 //
 // Goroutine ownership:
 //   - readPump  : reads from transport, forwards decoded Frames to onMessage.
-//   - writePump : sole writer on transport; drains session.send.
+//   - writePump : sole writer of application data frames on transport; drains session.send.
 //   - pingPump  : drives Ping heartbeat; fires PongTimeout metric on failure.
 //
 // Lifecycle signal flow:
