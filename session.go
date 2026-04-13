@@ -93,8 +93,9 @@ func (s *session) Done() <-chan struct{} { return s.done }
 // If the session is suspended (within resume window), the frame is buffered
 // to the resume ring buffer instead of the send channel.
 //
-// The first select is a fast-path optimisation: skip encoding when the
-// session is already closed. The second select is the authoritative check.
+// The select is a fast-path optimisation: skip encoding when the session is
+// already closed. The authoritative closed check is sendQueue.Enqueue, which
+// inspects q.closed under the queue mutex.
 func (s *session) Send(f Frame) error {
 	// Fast path: bail early if the session is already closed.
 	select {
@@ -555,8 +556,13 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 
 		data, err := s.send.Pop(ctx)
 		if err != nil {
-			s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
-				zap.String("conn_id", s.id))
+			if errors.Is(err, ErrConnectionClosed) {
+				s.config.logger.Debug("wspulse: writePump stopping: send queue closed",
+					zap.String("conn_id", s.id))
+			} else {
+				s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+					zap.String("conn_id", s.id))
+			}
 			// Send a graceful close frame only on session shutdown (s.done
 			// closed), not on reconnect swap where speed matters and the
 			// old transport may already be dead.
