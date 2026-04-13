@@ -18,7 +18,7 @@ type Buffer[T any] struct {
 // Panics if capacity < 1.
 func New[T any](capacity int) *Buffer[T] {
 	if capacity < 1 {
-		panic("wspulse: ringbuffer: capacity must be at least 1")
+		panic("wspulse: ring: capacity must be at least 1")
 	}
 	return &Buffer[T]{
 		data: make([]T, capacity),
