@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.9.1] - 2026-04-13
+
+### Fixed
+
+- **Drop-oldest TOCTOU race** (hub#44): `session.send chan []byte` replaced with
+  `sendQueue` (mutex-guarded `ring.Buffer` + `sync.Cond`). The previous three-select
+  drop-oldest pattern had two race windows where the oldest frame could be consumed
+  by another goroutine between selects, causing the new frame to be silently dropped
+  even when the buffer was not full.
+- **Internal package rename**: `github.com/wspulse/hub/ringbuffer` renamed to
+  `github.com/wspulse/hub/ring`; type `RingBuffer` renamed to `Buffer` to eliminate
+  the `ring.RingBuffer` stutter.
+
 ## [0.9.0] - 2026-04-13
 
 ### Breaking changes
@@ -15,6 +30,8 @@
 - Goroutine model changed from 2 (readPump + writePump) to 3+1 (readPump + writePump + pingPump + bridge goroutine)
 - Heartbeat mechanism: writePump no longer drives Ping; a dedicated `pingPump` goroutine uses `coder/websocket`'s synchronous `Ping(ctx)` API
 - TCP drops now propagate the actual I/O error to `OnDisconnect`/`OnTransportDrop` callbacks. Previously, gorilla wrapped TCP drops as close code 1006 which was classified as normal (nil error). This does not affect the suspend-vs-disconnect decision — that is determined solely by `resumeWindow`
+
+---
 
 ## [0.8.0] - 2026-04-09
 
@@ -148,6 +165,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/wspulse/hub/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/wspulse/hub/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wspulse/hub/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/wspulse/hub/compare/v0.6.0...v0.7.0

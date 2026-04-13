@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	core "github.com/wspulse/core"
+	"github.com/wspulse/hub/ring"
 )
 
 // Connection represents a logical WebSocket session managed by the Hub.
@@ -66,17 +67,17 @@ const (
 type session struct {
 	id     string
 	roomID string
-	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
+	send   *sendQueue    // outbound frame queue; shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex         // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    core.Transport     // current physical connection; nil when suspended
-	pumpCancel   context.CancelFunc // cancels the current pump context
-	pumpDone     chan struct{}      // closed by writePump on exit
-	graceTimer   *time.Timer        // resume window timer; nil when not suspended
-	state        sessionState       // current lifecycle state
-	resumeBuffer *ringBuffer        // nil when resume is disabled
-	suspendEpoch uint64             // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex           // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport       // current physical connection; nil when suspended
+	pumpCancel   context.CancelFunc   // cancels the current pump context
+	pumpDone     chan struct{}        // closed by writePump on exit
+	graceTimer   *time.Timer          // resume window timer; nil when not suspended
+	state        sessionState         // current lifecycle state
+	resumeBuffer *ring.Buffer[[]byte] // nil when resume is disabled
+	suspendEpoch uint64               // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -90,10 +91,11 @@ func (s *session) Done() <-chan struct{} { return s.done }
 
 // Send encodes f and enqueues the bytes for delivery to the remote peer.
 // If the session is suspended (within resume window), the frame is buffered
-// to the resume ring buffer instead of the send channel.
+// to the resume ring buffer instead of the outbound send queue.
 //
-// The first select is a fast-path optimisation: skip encoding when the
-// session is already closed. The second select is the authoritative check.
+// The select is a fast-path optimisation: skip encoding when the session is
+// already closed. The authoritative closed check is sendQueue.Enqueue, which
+// inspects q.closed under the queue mutex.
 func (s *session) Send(f Frame) error {
 	// Fast path: bail early if the session is already closed.
 	select {
@@ -122,7 +124,7 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	// Check if we need to buffer (suspended state).
 	s.mu.Lock()
 	if s.state == stateSuspended && s.resumeBuffer != nil {
-		dropped := s.resumeBuffer.Push(data)
+		dropped := s.resumeBuffer.ForcePush(data)
 		s.mu.Unlock()
 		if dropped {
 			s.config.metrics.FrameDropped(s.roomID, s.id)
@@ -138,41 +140,28 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	}
 	s.mu.Unlock()
 
-	// Authoritative check: three-way select evaluates all outcomes atomically.
-	select {
-	case s.send <- data:
-		return nil
-	case <-s.done:
-		return ErrConnectionClosed
-	default:
-		if !dropOldest {
-			s.config.logger.Debug("wspulse: send buffer full, dropping frame",
+	if dropOldest {
+		evicted, err := s.send.ForceEnqueue(data)
+		if err != nil {
+			return err
+		}
+		if evicted {
+			s.config.logger.Debug("wspulse: oldest frame dropped from send buffer (backpressure)",
 				zap.String("conn_id", s.id),
 			)
 			s.config.metrics.FrameDropped(s.roomID, s.id)
-			return ErrSendBufferFull
 		}
+		return nil
 	}
 
-	// Drop-oldest backpressure: discard the oldest frame and retry.
-	select {
-	case <-s.send:
-		s.config.logger.Debug("wspulse: oldest frame dropped from send buffer (backpressure)",
+	err := s.send.Enqueue(data)
+	if err == ErrSendBufferFull {
+		s.config.logger.Debug("wspulse: send buffer full, dropping frame",
 			zap.String("conn_id", s.id),
 		)
 		s.config.metrics.FrameDropped(s.roomID, s.id)
-	default:
 	}
-	select {
-	case s.send <- data:
-		return nil
-	default:
-		s.config.logger.Debug("wspulse: frame irrecoverably dropped: send buffer still full after drop-oldest",
-			zap.String("conn_id", s.id),
-		)
-		s.config.metrics.FrameDropped(s.roomID, s.id)
-		return ErrSendBufferFull
-	}
+	return err
 }
 
 // cancelGraceTimer stops any running grace timer and bumps the suspend epoch
@@ -219,6 +208,7 @@ func (s *session) Close() error {
 		}
 
 		close(s.done)
+		s.send.Close()
 	})
 	return nil
 }
@@ -325,35 +315,23 @@ func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete 
 				}
 				s.mu.Unlock()
 				for _, data := range frames {
-					select {
-					case s.send <- data:
+					evicted, err := s.send.ForceEnqueue(data)
+					if err != nil {
+						// Queue closed — session terminated during drain.
+						s.config.logger.Debug("wspulse: resume drain aborted — send queue closed",
+							zap.String("conn_id", s.id),
+						)
+						break
+					}
+					if evicted {
+						s.config.logger.Debug("wspulse: oldest frame dropped to make room for resume frame",
+							zap.String("conn_id", s.id),
+						)
+						s.config.metrics.FrameDropped(s.roomID, s.id)
+					} else {
 						s.config.logger.Debug("wspulse: resume frame enqueued",
 							zap.String("conn_id", s.id),
 						)
-					default:
-						// Send buffer full — apply drop-oldest to make room.
-						s.config.logger.Debug("wspulse: send buffer full during resume drain, applying drop-oldest",
-							zap.String("conn_id", s.id),
-						)
-						select {
-						case <-s.send:
-							s.config.logger.Debug("wspulse: oldest frame dropped to make room for resume frame",
-								zap.String("conn_id", s.id),
-							)
-							s.config.metrics.FrameDropped(s.roomID, s.id)
-						default:
-						}
-						select {
-						case s.send <- data:
-							s.config.logger.Debug("wspulse: resume frame enqueued after drop-oldest",
-								zap.String("conn_id", s.id),
-							)
-						default:
-							s.config.logger.Warn("wspulse: resume frame dropped: send buffer still full after drop-oldest",
-								zap.String("conn_id", s.id),
-							)
-							s.config.metrics.FrameDropped(s.roomID, s.id)
-						}
 					}
 				}
 				s.mu.Lock()
@@ -576,26 +554,15 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 		default:
 		}
 
-		select {
-		case data := <-s.send:
-			writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
-			err := transport.Write(writeCtx, s.config.codec.FrameType(), data)
-			cancel()
-			if err != nil {
-				if ctx.Err() != nil {
-					s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
-						zap.String("conn_id", s.id))
-					return
-				}
-				s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
-				return
+		data, err := s.send.Pop(ctx)
+		if err != nil {
+			if errors.Is(err, ErrConnectionClosed) {
+				s.config.logger.Debug("wspulse: writePump stopping: send queue closed",
+					zap.String("conn_id", s.id))
+			} else {
+				s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+					zap.String("conn_id", s.id))
 			}
-			s.config.metrics.MessageSent(s.roomID, s.id, len(data))
-			s.config.metrics.SendBufferUtilization(s.roomID, s.id, len(s.send), cap(s.send))
-
-		case <-ctx.Done():
-			s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
-				zap.String("conn_id", s.id))
 			// Send a graceful close frame only on session shutdown (s.done
 			// closed), not on reconnect swap where speed matters and the
 			// old transport may already be dead.
@@ -606,5 +573,20 @@ func (s *session) writePump(ctx context.Context, transport core.Transport, pumpD
 			}
 			return
 		}
+
+		writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
+		err = transport.Write(writeCtx, s.config.codec.FrameType(), data)
+		cancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
+					zap.String("conn_id", s.id))
+				return
+			}
+			s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
+			return
+		}
+		s.config.metrics.MessageSent(s.roomID, s.id, len(data))
+		s.config.metrics.SendBufferUtilization(s.roomID, s.id, s.send.Len(), s.send.Cap())
 	}
 }

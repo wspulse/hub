@@ -60,12 +60,13 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
 - `session.done` is a `chan struct{}` closed exactly once (via `closeOnce`) by
   `session.Close()`. The bridge goroutine translates this into `pumpCancel()`
   so all pumps exit via context cancellation.
-- The `session.send` channel is **never closed by the sender** to avoid
-  send-on-closed-channel panics; it is simply abandoned once `done` is
-  closed.
-- The `session.send` channel is **shared across reconnects** — it persists
-  for the lifetime of the session, not the lifetime of a single WebSocket
-  connection.
+- `session.send` is a `*sendQueue` (mutex-guarded `ring.Buffer` + `sync.Cond`)
+  shared across reconnects for the lifetime of the session. It is closed by
+  `session.Close()` after `done` is closed, which unblocks any goroutine
+  blocked in `sendQueue.Pop`. This eliminates the TOCTOU race present in the
+  previous three-select drop-oldest pattern.
+- `writePump` calls `s.send.Pop(pumpCtx)`, which blocks until a frame is
+  available, the context is cancelled, or the queue is closed.
 
 ---
 
@@ -120,17 +121,18 @@ wspulse.NewHub(connect,
 
 ## 3. Backpressure and Send Buffer
 
-Each session maintains a `session.send chan []byte` with a configurable
-depth (default **256**). When `Hub.Broadcast` or `Hub.Send` is called:
+Each session maintains a `session.send *sendQueue` — a mutex-guarded
+`ring.Buffer[[]byte]` with a `sync.Cond` for blocking `Pop`. Its capacity
+is configurable (default **256**). When `Hub.Broadcast` or `Hub.Send` is called:
 
-1. The encoded frame bytes are sent to `session.send` via a non-blocking select.
-2. If the channel is **full**, `ErrSendBufferFull` is returned to the caller
-   (for direct `Send`) or **drop-oldest** backpressure is applied (for
-   `Broadcast`): the oldest frame in the connection's send buffer is discarded
-   to make room for the new frame; if the buffer is still full after that, the
-   new frame is silently dropped.
+1. The encoded frame bytes are passed to `sendQueue.Enqueue` or
+   `sendQueue.ForceEnqueue` (both hold the mutex for the entire operation).
+2. If the buffer is **full**, `ErrSendBufferFull` is returned to the caller
+   (for direct `Send`, via `Enqueue`) or **drop-oldest** backpressure is applied
+   atomically (for `Broadcast`, via `ForceEnqueue`): the oldest frame is evicted
+   and the new frame is inserted in a single critical section — no TOCTOU race.
 3. When `resumeWindow > 0` and the session is suspended (no active WebSocket),
-   frames are buffered to an in-memory `ringBuffer` instead of the send channel.
+   frames are buffered to an in-memory `ring.Buffer` instead of the send queue.
    These frames are replayed when the client reconnects.
 
 This ensures a slow or lagging connection cannot block the heart event loop or
