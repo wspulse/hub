@@ -173,7 +173,7 @@ func (h *heart) handleRegister(message registerMessage) {
 	newSession := &session{
 		id:          message.connectionID,
 		roomID:      message.roomID,
-		send:        make(chan []byte, h.config.sendBufferSize),
+		send:        newSendQueue(h.config.sendBufferSize),
 		done:        make(chan struct{}),
 		state:       stateConnected,
 		connectedAt: time.Now(),
