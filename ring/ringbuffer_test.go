@@ -1,4 +1,4 @@
-package ringbuffer_test
+package ring_test
 
 import (
 	"testing"
@@ -6,14 +6,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wspulse/hub/ringbuffer"
+	"github.com/wspulse/hub/ring"
 )
 
 // ── A: New ───────────────────────────────────────────────────────────────────
 
 func TestNew_A1_ValidCapacity(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	require.NotNil(t, rb)
 	assert.Equal(t, 0, rb.Len())
 	assert.Equal(t, 4, rb.Cap())
@@ -21,32 +21,32 @@ func TestNew_A1_ValidCapacity(t *testing.T) {
 
 func TestNew_A2_CapacityOne(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[[]byte](1)
+	rb := ring.New[[]byte](1)
 	assert.Equal(t, 1, rb.Cap())
 }
 
 func TestNew_A3_PanicsOnZeroCapacity(t *testing.T) {
 	t.Parallel()
-	assert.Panics(t, func() { ringbuffer.New[int](0) })
+	assert.Panics(t, func() { ring.New[int](0) })
 }
 
 func TestNew_A4_PanicsOnNegativeCapacity(t *testing.T) {
 	t.Parallel()
-	assert.Panics(t, func() { ringbuffer.New[int](-1) })
+	assert.Panics(t, func() { ring.New[int](-1) })
 }
 
 // ── B: Push ───────────────────────────────────────────────────────────────────
 
 func TestPush_B1_ReturnsTrueWhenNotFull(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	assert.True(t, rb.Push(1))
 	assert.Equal(t, 1, rb.Len())
 }
 
 func TestPush_B2_ReturnsFalseWhenFull(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](2)
+	rb := ring.New[int](2)
 	rb.Push(1)
 	rb.Push(2)
 	assert.False(t, rb.Push(3))
@@ -55,7 +55,7 @@ func TestPush_B2_ReturnsFalseWhenFull(t *testing.T) {
 
 func TestPush_B3_ItemNotAddedWhenFull(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](2)
+	rb := ring.New[int](2)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Push(99) // should be rejected
@@ -65,7 +65,7 @@ func TestPush_B3_ItemNotAddedWhenFull(t *testing.T) {
 
 func TestPush_B4_FillsToCapacity(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](3)
+	rb := ring.New[int](3)
 	assert.True(t, rb.Push(1))
 	assert.True(t, rb.Push(2))
 	assert.True(t, rb.Push(3))
@@ -76,7 +76,7 @@ func TestPush_B4_FillsToCapacity(t *testing.T) {
 
 func TestForcePush_C1_NoEvictionWhenNotFull(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	evicted := rb.ForcePush(1)
 	assert.False(t, evicted)
 	assert.Equal(t, 1, rb.Len())
@@ -84,7 +84,7 @@ func TestForcePush_C1_NoEvictionWhenNotFull(t *testing.T) {
 
 func TestForcePush_C2_EvictsOldestWhenFull(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](2)
+	rb := ring.New[int](2)
 	rb.Push(1)
 	rb.Push(2)
 	evicted := rb.ForcePush(3)
@@ -95,7 +95,7 @@ func TestForcePush_C2_EvictsOldestWhenFull(t *testing.T) {
 
 func TestForcePush_C3_MultipleEvictions(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](2)
+	rb := ring.New[int](2)
 	rb.Push(1)
 	rb.Push(2)
 	rb.ForcePush(3) // evicts 1
@@ -106,7 +106,7 @@ func TestForcePush_C3_MultipleEvictions(t *testing.T) {
 
 func TestForcePush_C4_SingleCapacityAlwaysEvicts(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](1)
+	rb := ring.New[int](1)
 	rb.Push(1)
 	evicted := rb.ForcePush(2)
 	assert.True(t, evicted)
@@ -118,7 +118,7 @@ func TestForcePush_C4_SingleCapacityAlwaysEvicts(t *testing.T) {
 
 func TestPop_D1_ReturnsFalseOnEmpty(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	v, ok := rb.Pop()
 	assert.False(t, ok)
 	assert.Zero(t, v)
@@ -126,7 +126,7 @@ func TestPop_D1_ReturnsFalseOnEmpty(t *testing.T) {
 
 func TestPop_D2_RemovesOldestFirst(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(10)
 	rb.Push(20)
 	rb.Push(30)
@@ -142,7 +142,7 @@ func TestPop_D2_RemovesOldestFirst(t *testing.T) {
 
 func TestPop_D4_Wraparound(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](3)
+	rb := ring.New[int](3)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Push(3)
@@ -156,7 +156,7 @@ func TestPop_D4_Wraparound(t *testing.T) {
 
 func TestPeek_E1_ReturnsFalseOnEmpty(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	v, ok := rb.Peek()
 	assert.False(t, ok)
 	assert.Zero(t, v)
@@ -164,7 +164,7 @@ func TestPeek_E1_ReturnsFalseOnEmpty(t *testing.T) {
 
 func TestPeek_E2_ReturnsOldestWithoutRemoving(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(10)
 	rb.Push(20)
 	v, ok := rb.Peek()
@@ -177,13 +177,13 @@ func TestPeek_E2_ReturnsOldestWithoutRemoving(t *testing.T) {
 
 func TestDrain_F1_ReturnsNilOnEmpty(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	assert.Nil(t, rb.Drain())
 }
 
 func TestDrain_F2_ReturnsFIFOOrder(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Push(3)
@@ -193,7 +193,7 @@ func TestDrain_F2_ReturnsFIFOOrder(t *testing.T) {
 
 func TestDrain_F3_ClearsBuffer(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(1)
 	rb.Drain()
 	assert.Equal(t, 0, rb.Len())
@@ -202,7 +202,7 @@ func TestDrain_F3_ClearsBuffer(t *testing.T) {
 
 func TestDrain_F4_WraparoundOrder(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](3)
+	rb := ring.New[int](3)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Push(3)
@@ -215,7 +215,7 @@ func TestDrain_F4_WraparoundOrder(t *testing.T) {
 func TestDrain_F5_NonZeroHeadBeforeDrain(t *testing.T) {
 	t.Parallel()
 	// Advance head to non-zero position before drain to exercise the wrap path.
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Push(3)
@@ -231,7 +231,7 @@ func TestDrain_F5_NonZeroHeadBeforeDrain(t *testing.T) {
 
 func TestClear_G1_EmptiesBuffer(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Push(1)
 	rb.Push(2)
 	rb.Clear()
@@ -240,7 +240,7 @@ func TestClear_G1_EmptiesBuffer(t *testing.T) {
 
 func TestClear_G2_IsIdempotent(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	rb.Clear()
 	rb.Clear()
 	assert.Equal(t, 0, rb.Len())
@@ -248,7 +248,7 @@ func TestClear_G2_IsIdempotent(t *testing.T) {
 
 func TestClear_G3_NonZeroHeadClearsCorrectSlots(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[*int](3)
+	rb := ring.New[*int](3)
 	a, b, c := 1, 2, 3
 	rb.Push(&a)
 	rb.Push(&b)
@@ -267,7 +267,7 @@ func TestClear_G3_NonZeroHeadClearsCorrectSlots(t *testing.T) {
 
 func TestLenCap_H1_LenTracksSize(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](4)
+	rb := ring.New[int](4)
 	assert.Equal(t, 0, rb.Len())
 	rb.Push(1)
 	assert.Equal(t, 1, rb.Len())
@@ -279,7 +279,7 @@ func TestLenCap_H1_LenTracksSize(t *testing.T) {
 
 func TestLenCap_H2_CapIsConstant(t *testing.T) {
 	t.Parallel()
-	rb := ringbuffer.New[int](7)
+	rb := ring.New[int](7)
 	for range 7 {
 		rb.Push(0)
 	}
@@ -290,7 +290,7 @@ func TestLenCap_H2_CapIsConstant(t *testing.T) {
 
 func BenchmarkPush(b *testing.B) {
 	// Pre-fill half the buffer so Push succeeds every iteration.
-	rb := ringbuffer.New[[]byte](512)
+	rb := ring.New[[]byte](512)
 	data := make([]byte, 64)
 	for range 256 {
 		rb.Push(data)
@@ -304,7 +304,7 @@ func BenchmarkPush(b *testing.B) {
 }
 
 func BenchmarkForcePush(b *testing.B) {
-	rb := ringbuffer.New[[]byte](256)
+	rb := ring.New[[]byte](256)
 	data := make([]byte, 64)
 	b.ResetTimer()
 	for range b.N {
@@ -313,7 +313,7 @@ func BenchmarkForcePush(b *testing.B) {
 }
 
 func BenchmarkPop(b *testing.B) {
-	rb := ringbuffer.New[[]byte](256)
+	rb := ring.New[[]byte](256)
 	data := make([]byte, 64)
 	// Pre-fill.
 	for range 256 {
@@ -328,7 +328,7 @@ func BenchmarkPop(b *testing.B) {
 }
 
 func BenchmarkDrain(b *testing.B) {
-	rb := ringbuffer.New[[]byte](256)
+	rb := ring.New[[]byte](256)
 	data := make([]byte, 64)
 	b.ResetTimer()
 	for range b.N {

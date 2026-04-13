@@ -1,5 +1,5 @@
-// Package ringbuffer — internal tests that require access to unexported fields.
-package ringbuffer
+// Package ring — internal tests that require access to unexported fields.
+package ring
 
 import (
 	"testing"

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	core "github.com/wspulse/core"
-	"github.com/wspulse/hub/ringbuffer"
+	"github.com/wspulse/hub/ring"
 )
 
 // Connection represents a logical WebSocket session managed by the Hub.
@@ -70,14 +70,14 @@ type session struct {
 	send   *sendQueue    // outbound frame queue; shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex                     // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    core.Transport                 // current physical connection; nil when suspended
-	pumpCancel   context.CancelFunc             // cancels the current pump context
-	pumpDone     chan struct{}                  // closed by writePump on exit
-	graceTimer   *time.Timer                    // resume window timer; nil when not suspended
-	state        sessionState                   // current lifecycle state
-	resumeBuffer *ringbuffer.RingBuffer[[]byte] // nil when resume is disabled
-	suspendEpoch uint64                         // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex           // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport       // current physical connection; nil when suspended
+	pumpCancel   context.CancelFunc   // cancels the current pump context
+	pumpDone     chan struct{}        // closed by writePump on exit
+	graceTimer   *time.Timer          // resume window timer; nil when not suspended
+	state        sessionState         // current lifecycle state
+	resumeBuffer *ring.Buffer[[]byte] // nil when resume is disabled
+	suspendEpoch uint64               // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 

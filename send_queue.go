@@ -4,11 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/wspulse/hub/ringbuffer"
+	"github.com/wspulse/hub/ring"
 )
 
 // sendQueue is a concurrent, fixed-capacity FIFO queue for outbound frames.
-// It wraps a ringbuffer.RingBuffer[[]byte] with a mutex and condition variable
+// It wraps a ring.Buffer[[]byte] with a mutex and condition variable
 // to provide a blocking Pop and two enqueue strategies:
 //
 //   - Enqueue: rejects when full (used by session.Send — caller should know)
@@ -23,13 +23,13 @@ import (
 type sendQueue struct {
 	mu     sync.Mutex
 	cond   *sync.Cond
-	buf    *ringbuffer.RingBuffer[[]byte]
+	buf    *ring.Buffer[[]byte]
 	closed bool
 }
 
 func newSendQueue(capacity int) *sendQueue {
 	q := &sendQueue{
-		buf: ringbuffer.New[[]byte](capacity),
+		buf: ring.New[[]byte](capacity),
 	}
 	q.cond = sync.NewCond(&q.mu)
 	return q
