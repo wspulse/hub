@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-13
+
 ### Fixed
 
 - **Drop-oldest TOCTOU race** (hub#44): `session.send chan []byte` replaced with
@@ -163,7 +165,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/wspulse/hub/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/wspulse/hub/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wspulse/hub/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/wspulse/hub/compare/v0.6.0...v0.7.0
