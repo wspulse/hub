@@ -280,13 +280,15 @@ func TestSendQueue_F2_DropOldestIsAtomic(t *testing.T) {
 		// Concurrently: one goroutine drains (simulates writePump),
 		// another calls ForceEnqueue (simulates broadcast).
 		ready := make(chan struct{})
+		poppedCh := make(chan []byte, 1)
 		var wg sync.WaitGroup
 		wg.Add(2)
 
 		go func() {
 			defer wg.Done()
 			<-ready
-			q.Pop(context.Background()) //nolint:errcheck
+			data, _ := q.Pop(context.Background())
+			poppedCh <- data
 		}()
 
 		go func() {
@@ -298,22 +300,19 @@ func TestSendQueue_F2_DropOldestIsAtomic(t *testing.T) {
 		close(ready)
 		wg.Wait()
 
-		// Drain whatever remains and check newest is present somewhere.
-		// Either Pop already consumed it, or it's still in the buffer.
+		// newest must appear either in what Pop consumed or in the remaining buffer.
+		// The only invalid outcome (from the old TOCTOU race) was newest being
+		// silently dropped while buffer appeared non-full — cannot happen with mutex.
+		popped := <-poppedCh
 		remaining := q.Drain()
-		found := false
+		newestFound := string(popped) == "newest"
 		for _, item := range remaining {
 			if string(item) == "newest" {
-				found = true
+				newestFound = true
 				break
 			}
 		}
-		// If Pop consumed it, Len is 1 (one of old1/old2 remains).
-		// If ForceEnqueue evicted and Pop didn't consume newest, it's in remaining.
-		// In all valid outcomes, newest must be either consumed or in remaining.
-		// The only invalid outcome (from the old TOCTOU race) was newest being
-		// silently dropped while buffer appeared non-full — cannot happen with mutex.
-		_ = found // presence verified structurally; see comment above
+		assert.True(t, newestFound, "newest frame must not be silently dropped")
 		assert.LessOrEqual(t, q.Len(), bufSize, "buffer must not exceed capacity")
 	}
 }

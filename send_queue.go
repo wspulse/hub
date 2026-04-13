@@ -103,8 +103,8 @@ func (q *sendQueue) Pop(ctx context.Context) ([]byte, error) {
 }
 
 // Drain removes and returns all items in FIFO order without blocking.
-// Used by the resume transition goroutine to move buffered frames into
-// the send channel before the new writePump starts.
+// Used by the resume transition goroutine to transfer buffered frames into
+// the new session's outbound send queue before its writePump starts.
 //
 // Must not be called concurrently with Pop.
 func (q *sendQueue) Drain() [][]byte {
