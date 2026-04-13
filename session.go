@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	core "github.com/wspulse/core"
+	"github.com/wspulse/hub/ringbuffer"
 )
 
 // Connection represents a logical WebSocket session managed by the Hub.
@@ -69,14 +70,14 @@ type session struct {
 	send   chan []byte   // raw encoded frames; never closed, shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex         // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    core.Transport     // current physical connection; nil when suspended
-	pumpCancel   context.CancelFunc // cancels the current pump context
-	pumpDone     chan struct{}      // closed by writePump on exit
-	graceTimer   *time.Timer        // resume window timer; nil when not suspended
-	state        sessionState       // current lifecycle state
-	resumeBuffer *ringBuffer        // nil when resume is disabled
-	suspendEpoch uint64             // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex                     // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    core.Transport                 // current physical connection; nil when suspended
+	pumpCancel   context.CancelFunc             // cancels the current pump context
+	pumpDone     chan struct{}                  // closed by writePump on exit
+	graceTimer   *time.Timer                    // resume window timer; nil when not suspended
+	state        sessionState                   // current lifecycle state
+	resumeBuffer *ringbuffer.RingBuffer[[]byte] // nil when resume is disabled
+	suspendEpoch uint64                         // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -122,7 +123,7 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	// Check if we need to buffer (suspended state).
 	s.mu.Lock()
 	if s.state == stateSuspended && s.resumeBuffer != nil {
-		dropped := s.resumeBuffer.Push(data)
+		dropped := s.resumeBuffer.ForcePush(data)
 		s.mu.Unlock()
 		if dropped {
 			s.config.metrics.FrameDropped(s.roomID, s.id)

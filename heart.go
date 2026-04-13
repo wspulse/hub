@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	core "github.com/wspulse/core"
+	"github.com/wspulse/hub/ringbuffer"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ func (h *heart) handleRegister(message registerMessage) {
 		config:      h.config,
 	}
 	if h.config.resumeWindow > 0 {
-		newSession.resumeBuffer = newRingBuffer(h.config.sendBufferSize)
+		newSession.resumeBuffer = ringbuffer.New[[]byte](h.config.sendBufferSize)
 	}
 
 	var roomCreated bool
