@@ -91,7 +91,7 @@ func (s *session) Done() <-chan struct{} { return s.done }
 
 // Send encodes f and enqueues the bytes for delivery to the remote peer.
 // If the session is suspended (within resume window), the frame is buffered
-// to the resume ring buffer instead of the send channel.
+// to the resume ring buffer instead of the outbound send queue.
 //
 // The select is a fast-path optimisation: skip encoding when the session is
 // already closed. The authoritative closed check is sendQueue.Enqueue, which
