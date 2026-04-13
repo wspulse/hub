@@ -31,7 +31,6 @@
 - Heartbeat mechanism: writePump no longer drives Ping; a dedicated `pingPump` goroutine uses `coder/websocket`'s synchronous `Ping(ctx)` API
 - TCP drops now propagate the actual I/O error to `OnDisconnect`/`OnTransportDrop` callbacks. Previously, gorilla wrapped TCP drops as close code 1006 which was classified as normal (nil error). This does not affect the suspend-vs-disconnect decision — that is determined solely by `resumeWindow`
 
----
 
 ## [0.8.0] - 2026-04-09
 
@@ -42,7 +41,6 @@
 - Renamed internal event loop from `hub` to `heart` (`hub.go` → `heart.go`)
 - `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/hub/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
 
----
 
 ## [0.7.0] - 2026-04-08
 
@@ -61,7 +59,6 @@
 - Fix race between `Close()` and `handleTransportDied` where `Close()` sets `stateClosed` before `detachWS()` runs, causing `OnDisconnect` to never fire. The hub now calls `disconnectSession` when `detachWS` detects a concurrently-closed session.
 - Fix `ResumeAttempt` metric firing after `attachWS` goroutine spawn, creating a window where the recording is not visible to the test's synchronous assertion. Moved metric call before `attachWS`.
 
----
 
 ## [0.6.0] - 2026-03-27
 
@@ -73,7 +70,6 @@
   always `true` — resume success rate is derivable from existing metrics
   (`ResumeAttempt` count vs `ConnectionClosed` with grace-expired reason).
 
----
 
 ## [0.5.0] - 2026-03-25
 
@@ -108,7 +104,6 @@
 
 - `WithResumeWindow` no longer enforces a 3-minute upper bound — any non-negative `time.Duration` is accepted
 
----
 
 ## [0.3.0] - 2026-03-13
 
@@ -116,7 +111,6 @@
 
 - Package name changed from `server` to `wspulse` — import path unchanged (`github.com/wspulse/hub`), but the default identifier is now `wspulse.NewServer`, `wspulse.Server`, `wspulse.Connection`, etc. Consumers using the old bare import must add an alias (`server "github.com/wspulse/hub"`) or update references. (**breaking**)
 
----
 
 ## [0.2.1] - 2026-03-12
 
@@ -124,7 +118,6 @@
 
 - `WithResumeWindow` parameter changed from `int` (seconds) to `time.Duration` — e.g. `WithResumeWindow(30 * time.Second)` (**breaking**)
 
----
 
 ## [0.2.0] - 2026-03-12
 
@@ -141,7 +134,6 @@
 - `handleRegister` no longer silently drops `OnDisconnect` when a reconnect races a `Connection.Close()` on a suspended session
 - `disconnectSession` now cancels the grace timer before calling `Close()`, preventing a spurious `graceExpiredMessage` from being enqueued on the hub channel
 
----
 
 ## [0.1.0] - 2026-03-10
 
