@@ -34,7 +34,8 @@ go get github.com/wspulse/hub
 ```go
 import "github.com/wspulse/hub" // package name: wspulse
 
-srv := wspulse.NewHub(
+var srv wspulse.Hub
+srv = wspulse.NewHub(
     // ConnectFunc: authenticate and assign room + connection IDs
     func(r *http.Request) (roomID, connectionID string, err error) {
         token := r.URL.Query().Get("token")
