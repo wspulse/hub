@@ -131,8 +131,8 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 
 // WithPingInterval sets the interval between heartbeat pings sent by the
 // hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
-// a timeout derived from WriteTimeout. If the pong does not arrive within that
-// timeout, the connection is considered dead.
+// a timeout equal to writeTimeout (configured via WithWriteTimeout). If the
+// pong does not arrive within that timeout, the connection is considered dead.
 // d must be in (writeTimeout, 1m]. Default: 20 s.
 // NewHub panics if pingInterval <= writeTimeout after all options are applied.
 func WithPingInterval(d time.Duration) HubOption {
