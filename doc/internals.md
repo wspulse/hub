@@ -80,12 +80,17 @@ arrives or the context expires.
 
 ### Parameters
 
-| Parameter        | Default | Valid range | Description                                                             |
-| ---------------- | ------- | ----------- | ----------------------------------------------------------------------- |
-| `pingInterval`   | 10 s    | (0, 1 m]    | `pingPump` ticker interval; one synchronous Ping sent per tick          |
-| `writeTimeout`      | 10 s    | (0, 30 s]   | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`)   |
-| `maxMessageSize` | 512 B   | [1, 64 MiB] | `readPump SetReadLimit`; exceeded size triggers immediate disconnect    |
-| Send buffer      | 256     | [1, 4096]   | `session.send` channel depth (configurable via `WithSendBufferSize`)    |
+| Parameter        | Default | Valid range          | Description                                                           |
+| ---------------- | ------- | -------------------- | --------------------------------------------------------------------- |
+| `pingInterval`   | 20 s    | (writeTimeout, 1 m]  | `pingPump` ticker interval; one synchronous Ping sent per tick        |
+| `writeTimeout`   | 10 s    | (0, 30 s]            | Per-write deadline and Ping timeout (context timeout for `Ping(ctx)`) |
+| `maxMessageSize` | 512 B   | [1, 64 MiB]          | `readPump SetReadLimit`; exceeded size triggers immediate disconnect   |
+| Send buffer      | 256     | [1, 4096]            | `session.send` channel depth (configurable via `WithSendBufferSize`)  |
+
+**Constraint:** `pingInterval` must be strictly greater than `writeTimeout`.
+`NewHub` panics at construction time if this constraint is violated.
+This ensures the Pong for ping N always resolves before the ticker fires for ping N+1
+on a healthy connection, preventing tick accumulation in the `pingPump` select loop.
 
 Configuring non-default values:
 
