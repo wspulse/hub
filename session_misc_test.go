@@ -592,6 +592,12 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 
 // ── WithPingInterval ───────────────────────────────────────────────────────
 
+func TestDefaultConfigSatisfiesPingIntervalConstraint(t *testing.T) {
+	t.Parallel()
+	require.Greater(t, wspulse.DefaultPingInterval, wspulse.DefaultWriteTimeout,
+		"default pingInterval must be strictly greater than default writeTimeout")
+}
+
 func TestWithPingInterval_Valid(t *testing.T) {
 	t.Parallel()
 	require.NotPanics(t, func() {

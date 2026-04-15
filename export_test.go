@@ -1,6 +1,17 @@
 package wspulse
 
-import core "github.com/wspulse/core"
+import (
+	"net/http"
+
+	core "github.com/wspulse/core"
+)
+
+// DefaultPingInterval and DefaultWriteTimeout expose the default configuration
+// values so external test packages can verify the constraint pingInterval > writeTimeout.
+var (
+	DefaultPingInterval = defaultConfig(func(*http.Request) (string, string, error) { return "", "", nil }).pingInterval
+	DefaultWriteTimeout = defaultConfig(func(*http.Request) (string, string, error) { return "", "", nil }).writeTimeout
+)
 
 // Clock exports the internal clock interface for testing only.
 type Clock = clock
