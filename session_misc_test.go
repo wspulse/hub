@@ -627,6 +627,28 @@ func TestWithPingInterval_ExceedsMaxPanics(t *testing.T) {
 	})
 }
 
+func TestNewHub_PanicsWhenPingIntervalEqualToWriteTimeout(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithValue(t,
+		"wspulse: NewHub: pingInterval must be greater than writeTimeout",
+		func() {
+			// writeTimeout default is 10s; set pingInterval == writeTimeout.
+			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(10*time.Second))
+		},
+	)
+}
+
+func TestNewHub_PanicsWhenPingIntervalLessThanWriteTimeout(t *testing.T) {
+	t.Parallel()
+	require.PanicsWithValue(t,
+		"wspulse: NewHub: pingInterval must be greater than writeTimeout",
+		func() {
+			// writeTimeout default is 10s; set pingInterval < writeTimeout.
+			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(5*time.Second))
+		},
+	)
+}
+
 // ── HubShutdown ReadPump inline cleanup ─────────────────────────────────────
 
 func TestHubShutdown_ReadPumpInlineCleanup(t *testing.T) {
