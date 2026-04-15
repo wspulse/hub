@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Default `pingInterval` changed from 10 s to 20 s to satisfy the constraint
+  that `pingInterval` must be strictly greater than `writeTimeout` (default 10 s).
+
+### Fixed
+
+- `NewHub` now panics at construction time if `pingInterval <= writeTimeout`
+  after all options are applied. Previously this misconfiguration was silently
+  accepted, causing the `pingPump` ticker to fire while a pong was still pending
+  and compressing the effective heartbeat interval to the pong latency.
+
 ## [0.9.1] - 2026-04-13
 
 ### Fixed

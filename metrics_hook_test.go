@@ -280,6 +280,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 		},
 		wspulse.WithMetrics(rec),
 		wspulse.WithPingInterval(50*time.Millisecond),
+		wspulse.WithWriteTimeout(25*time.Millisecond),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
 		}),

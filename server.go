@@ -48,6 +48,7 @@ type internalHub struct {
 var _ Hub = (*internalHub)(nil)
 
 // NewHub creates and starts a Hub. connect must not be nil.
+// Panics if pingInterval <= writeTimeout after all options are applied.
 func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 	if connect == nil {
 		panic("wspulse: NewHub: connect must not be nil")
@@ -55,6 +56,9 @@ func NewHub(connect ConnectFunc, options ...HubOption) Hub {
 	config := defaultConfig(connect)
 	for _, option := range options {
 		option(config)
+	}
+	if config.pingInterval <= config.writeTimeout {
+		panic("wspulse: NewHub: pingInterval must be greater than writeTimeout")
 	}
 	h := newHeart(config)
 	heartDone := make(chan struct{})
