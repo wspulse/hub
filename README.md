@@ -51,7 +51,7 @@ srv := wspulse.NewHub(
     wspulse.WithOnDisconnect(func(connection wspulse.Connection, err error) {
         log.Printf("disconnected: %s", connection.ID())
     }),
-    wspulse.WithPingInterval(10*time.Second),
+    wspulse.WithPingInterval(30*time.Second),
     wspulse.WithResumeWindow(30*time.Second),
 )
 
@@ -136,7 +136,7 @@ See [wspulse/core](https://github.com/wspulse/core) for the full `router` API.
 | `WithOnTransportDrop(fn)`   | —                                    |
 | `WithOnTransportRestore(fn)`| —                                    |
 | `WithResumeWindow(d)`        | 0 (disabled)                         |
-| `WithPingInterval(d)`       | 10 s                                 |
+| `WithPingInterval(d)`       | 20 s                                 |
 | `WithWriteTimeout(d)`       | 10 s                                 |
 | `WithMaxMessageSize(n)`     | 512 B                                |
 | `WithSendBufferSize(n)`     | 256 frames                           |
