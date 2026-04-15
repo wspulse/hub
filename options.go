@@ -54,7 +54,7 @@ type hubConfig struct {
 func defaultConfig(connect ConnectFunc) *hubConfig {
 	return &hubConfig{
 		connect:        connect,
-		pingInterval:   10 * time.Second,
+		pingInterval:   20 * time.Second,
 		writeTimeout:   10 * time.Second,
 		maxMessageSize: 512,
 		sendBufferSize: 256,
@@ -131,9 +131,10 @@ func WithOnTransportRestore(fn func(Connection)) HubOption {
 
 // WithPingInterval sets the interval between heartbeat pings sent by the
 // hub's pingPump goroutine. Each ping uses a synchronous Ping(ctx) call with
-// a timeout derived from WriteTimeout. If the pong does not arrive within that
-// timeout, the connection is considered dead.
-// d must be in (0, 1m]. Default: 10 s.
+// a timeout equal to writeTimeout (configured via WithWriteTimeout). If the
+// pong does not arrive within that timeout, the connection is considered dead.
+// d must be in (writeTimeout, 1m]. Default: 20 s.
+// NewHub panics if pingInterval <= writeTimeout after all options are applied.
 func WithPingInterval(d time.Duration) HubOption {
 	if d <= 0 {
 		panic("wspulse: WithPingInterval: duration must be positive")
@@ -146,6 +147,7 @@ func WithPingInterval(d time.Duration) HubOption {
 
 // WithWriteTimeout sets the timeout for a single write operation on a
 // connection, including Ping. d must be in (0, 30s]. Default: 10 s.
+// NewHub panics if writeTimeout >= pingInterval after all options are applied.
 func WithWriteTimeout(d time.Duration) HubOption {
 	if d <= 0 {
 		panic("wspulse: WithWriteTimeout: duration must be positive")

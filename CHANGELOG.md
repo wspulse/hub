@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-04-15
+
+### Changed
+
+- Default `pingInterval` changed from 10 s to 20 s to satisfy the constraint
+  that `pingInterval` must be strictly greater than `writeTimeout` (default 10 s).
+
+### Fixed
+
+- `NewHub` now panics at construction time if `pingInterval <= writeTimeout`
+  after all options are applied. Previously this misconfiguration was silently
+  accepted, causing the `pingPump` ticker to fire while a pong was still pending
+  and compressing the effective heartbeat interval to the pong latency.
+
 ## [0.9.1] - 2026-04-13
 
 ### Fixed
@@ -31,7 +45,6 @@
 - Heartbeat mechanism: writePump no longer drives Ping; a dedicated `pingPump` goroutine uses `coder/websocket`'s synchronous `Ping(ctx)` API
 - TCP drops now propagate the actual I/O error to `OnDisconnect`/`OnTransportDrop` callbacks. Previously, gorilla wrapped TCP drops as close code 1006 which was classified as normal (nil error). This does not affect the suspend-vs-disconnect decision — that is determined solely by `resumeWindow`
 
----
 
 ## [0.8.0] - 2026-04-09
 
@@ -42,7 +55,6 @@
 - Renamed internal event loop from `hub` to `heart` (`hub.go` → `heart.go`)
 - `NewTestServer` moved from the main `wspulse` package to `github.com/wspulse/hub/wstest` and renamed to `NewTestHub`. Import path changes from `wspulse.NewTestServer(...)` to `wstest.NewTestHub(...)`. This removes `net/http/httptest` and `testing` from the production import graph.
 
----
 
 ## [0.7.0] - 2026-04-08
 
@@ -61,7 +73,6 @@
 - Fix race between `Close()` and `handleTransportDied` where `Close()` sets `stateClosed` before `detachWS()` runs, causing `OnDisconnect` to never fire. The hub now calls `disconnectSession` when `detachWS` detects a concurrently-closed session.
 - Fix `ResumeAttempt` metric firing after `attachWS` goroutine spawn, creating a window where the recording is not visible to the test's synchronous assertion. Moved metric call before `attachWS`.
 
----
 
 ## [0.6.0] - 2026-03-27
 
@@ -73,7 +84,6 @@
   always `true` — resume success rate is derivable from existing metrics
   (`ResumeAttempt` count vs `ConnectionClosed` with grace-expired reason).
 
----
 
 ## [0.5.0] - 2026-03-25
 
@@ -108,7 +118,6 @@
 
 - `WithResumeWindow` no longer enforces a 3-minute upper bound — any non-negative `time.Duration` is accepted
 
----
 
 ## [0.3.0] - 2026-03-13
 
@@ -116,7 +125,6 @@
 
 - Package name changed from `server` to `wspulse` — import path unchanged (`github.com/wspulse/hub`), but the default identifier is now `wspulse.NewServer`, `wspulse.Server`, `wspulse.Connection`, etc. Consumers using the old bare import must add an alias (`server "github.com/wspulse/hub"`) or update references. (**breaking**)
 
----
 
 ## [0.2.1] - 2026-03-12
 
@@ -124,7 +132,6 @@
 
 - `WithResumeWindow` parameter changed from `int` (seconds) to `time.Duration` — e.g. `WithResumeWindow(30 * time.Second)` (**breaking**)
 
----
 
 ## [0.2.0] - 2026-03-12
 
@@ -141,7 +148,6 @@
 - `handleRegister` no longer silently drops `OnDisconnect` when a reconnect races a `Connection.Close()` on a suspended session
 - `disconnectSession` now cancels the grace timer before calling `Close()`, preventing a spurious `graceExpiredMessage` from being enqueued on the hub channel
 
----
 
 ## [0.1.0] - 2026-03-10
 
@@ -165,7 +171,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/wspulse/hub/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/wspulse/hub/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/wspulse/hub/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wspulse/hub/compare/v0.7.0...v0.8.0
