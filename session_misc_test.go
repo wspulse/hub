@@ -594,7 +594,7 @@ func TestCloseWhileConnecting_NoLeak(t *testing.T) {
 
 func TestDefaultConfigSatisfiesPingIntervalConstraint(t *testing.T) {
 	t.Parallel()
-	require.Greater(t, wspulse.DefaultPingInterval, wspulse.DefaultWriteTimeout,
+	require.Greater(t, wspulse.DefaultPingInterval(), wspulse.DefaultWriteTimeout(),
 		"default pingInterval must be strictly greater than default writeTimeout")
 }
 
@@ -632,8 +632,8 @@ func TestNewHub_PanicsWhenPingIntervalEqualToWriteTimeout(t *testing.T) {
 	require.PanicsWithValue(t,
 		"wspulse: NewHub: pingInterval must be greater than writeTimeout",
 		func() {
-			// writeTimeout default is 10s; set pingInterval == writeTimeout.
-			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(10*time.Second))
+			// pingInterval == default writeTimeout → must panic.
+			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(wspulse.DefaultWriteTimeout()))
 		},
 	)
 }
@@ -643,8 +643,8 @@ func TestNewHub_PanicsWhenPingIntervalLessThanWriteTimeout(t *testing.T) {
 	require.PanicsWithValue(t,
 		"wspulse: NewHub: pingInterval must be greater than writeTimeout",
 		func() {
-			// writeTimeout default is 10s; set pingInterval < writeTimeout.
-			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(5*time.Second))
+			// pingInterval < default writeTimeout → must panic.
+			wspulse.NewHub(acceptAll, wspulse.WithPingInterval(wspulse.DefaultWriteTimeout()/2))
 		},
 	)
 }
