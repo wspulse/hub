@@ -256,7 +256,7 @@ The total time a client has to reconnect is:
 effective window = pingInterval + writeTimeout + resumeWindow
 ```
 
-- `pingInterval` (default 10 s): worst-case wait until the next ping fires.
+- `pingInterval` (default 20 s): worst-case wait until the next ping fires.
 - `writeTimeout` (default 10 s): Ping timeout before the server detects the dead
   transport.
 - `resumeWindow` (configured via `WithResumeWindow`): additional grace period
