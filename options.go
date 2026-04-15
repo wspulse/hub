@@ -147,6 +147,7 @@ func WithPingInterval(d time.Duration) HubOption {
 
 // WithWriteTimeout sets the timeout for a single write operation on a
 // connection, including Ping. d must be in (0, 30s]. Default: 10 s.
+// NewHub panics if writeTimeout >= pingInterval after all options are applied.
 func WithWriteTimeout(d time.Duration) HubOption {
 	if d <= 0 {
 		panic("wspulse: WithWriteTimeout: duration must be positive")
