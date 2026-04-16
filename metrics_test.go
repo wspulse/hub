@@ -32,7 +32,7 @@ func TestNoopCollector_AllMethodsCallable(t *testing.T) {
 	c.MessageSent("room", "conn", 100)
 	c.FrameDropped("room", "conn")
 	c.SendBufferUtilization("room", "conn", 10, 256)
-	c.PongTimeout("room", "conn")
+	c.HeartbeatFailed("room", "conn")
 }
 
 // ── WithMetrics option ────────────────────────────────────────────────────────
@@ -121,8 +121,8 @@ func (r *recordingCollector) FrameDropped(roomID, connectionID string) {
 func (r *recordingCollector) SendBufferUtilization(roomID, connectionID string, used, capacity int) {
 	r.record(metricsEvent{name: "SendBufferUtilization", roomID: roomID, connectionID: connectionID, used: used, capacity: capacity})
 }
-func (r *recordingCollector) PongTimeout(roomID, connectionID string) {
-	r.record(metricsEvent{name: "PongTimeout", roomID: roomID, connectionID: connectionID})
+func (r *recordingCollector) HeartbeatFailed(roomID, connectionID string) {
+	r.record(metricsEvent{name: "HeartbeatFailed", roomID: roomID, connectionID: connectionID})
 }
 
 var _ wspulse.MetricsCollector = (*recordingCollector)(nil)

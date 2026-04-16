@@ -109,9 +109,9 @@ type MetricsCollector interface {
 	// Implementations should apply sampling, batching, or throttling as needed.
 	SendBufferUtilization(roomID, connectionID string, used, capacity int)
 
-	// PongTimeout is called when a Ping fails (timeout or transport error),
-	// indicating the remote peer is unreachable.
-	PongTimeout(roomID, connectionID string)
+	// HeartbeatFailed is called when a Ping fails (pong timeout or transport
+	// error), indicating the remote peer is unreachable.
+	HeartbeatFailed(roomID, connectionID string)
 }
 
 // NoopCollector is the default MetricsCollector that discards all events.
@@ -158,5 +158,5 @@ func (NoopCollector) FrameDropped(_, _ string) {}
 // SendBufferUtilization is a no-op. See MetricsCollector.SendBufferUtilization.
 func (NoopCollector) SendBufferUtilization(_, _ string, _, _ int) {}
 
-// PongTimeout is a no-op. See MetricsCollector.PongTimeout.
-func (NoopCollector) PongTimeout(_, _ string) {}
+// HeartbeatFailed is a no-op. See MetricsCollector.HeartbeatFailed.
+func (NoopCollector) HeartbeatFailed(_, _ string) {}
