@@ -243,7 +243,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the heart's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport transport, h *heart, onResumeComplete func()) {
+func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump group if still running.
@@ -252,7 +252,7 @@ func (s *session) attachWS(transport transport, h *heart, onResumeComplete func(
 	}
 	oldPumpDone := s.pumpDone
 
-	s.transport = transport
+	s.transport = trans
 	pumpCtx, pumpCancel := context.WithCancel(context.Background())
 	s.pumpCancel = pumpCancel
 	s.pumpDone = make(chan struct{})
@@ -343,7 +343,7 @@ func (s *session) attachWS(transport transport, h *heart, onResumeComplete func(
 		// do not start pumps on the stale/dead transport. Signal pumpDone so
 		// future transitions don't block waiting for this pump.
 		s.mu.Lock()
-		if s.transport != transport {
+		if s.transport != trans {
 			s.config.logger.Warn("wspulse: transition goroutine aborted — transport replaced or nil'd during drain",
 				zap.String("conn_id", s.id),
 			)
@@ -351,20 +351,20 @@ func (s *session) attachWS(transport transport, h *heart, onResumeComplete func(
 			// Close the orphaned transport — no pumps were started on it, so
 			// writePump's defer will never close it. Without this, the
 			// underlying TCP connection and file descriptor leak.
-			_ = transport.CloseNow()
+			_ = trans.CloseNow()
 			pumpCancel()
 			close(pumpDone)
 			return
 		}
 		s.mu.Unlock()
 
-		go s.readPump(pumpCtx, transport, h)
-		go s.writePump(pumpCtx, transport, pumpDone)
-		go s.pingPump(pumpCtx, transport)
+		go s.readPump(pumpCtx, trans, h)
+		go s.writePump(pumpCtx, trans, pumpDone)
+		go s.pingPump(pumpCtx, trans)
 
 		if onResumeComplete != nil {
 			s.mu.Lock()
-			shouldCall := s.state == stateConnected && s.transport == transport
+			shouldCall := s.state == stateConnected && s.transport == trans
 			s.mu.Unlock()
 			if shouldCall {
 				go onResumeComplete()
@@ -403,20 +403,20 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 // within writeTimeout. On failure, fires PongTimeout metric and calls
 // CloseNow() to force-close the transport (without cancelling the context,
 // so other pumps detect the error via their own I/O failures).
-func (s *session) pingPump(ctx context.Context, transport transport) {
+func (s *session) pingPump(ctx context.Context, trans transport) {
 	ticker := s.config.clock.NewTicker(s.config.pingInterval)
 	defer ticker.Stop()
 
 	// Send an initial ping immediately so dead-on-arrival connections are
 	// detected within writeTimeout instead of waiting a full pingInterval.
-	if !s.doPing(ctx, transport) {
+	if !s.doPing(ctx, trans) {
 		return
 	}
 
 	for {
 		select {
 		case <-ticker.C:
-			if !s.doPing(ctx, transport) {
+			if !s.doPing(ctx, trans) {
 				return
 			}
 		case <-ctx.Done():
@@ -427,9 +427,9 @@ func (s *session) pingPump(ctx context.Context, transport transport) {
 
 // doPing sends a single Ping with a writeTimeout deadline. Returns true if the
 // pong arrived successfully, false if the caller should exit.
-func (s *session) doPing(ctx context.Context, transport transport) bool {
+func (s *session) doPing(ctx context.Context, trans transport) bool {
 	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
-	err := transport.Ping(pingCtx)
+	err := trans.Ping(pingCtx)
 	cancel()
 	if err != nil {
 		// context.Canceled means the pump context was cancelled (reconnect/close);
@@ -440,7 +440,7 @@ func (s *session) doPing(ctx context.Context, transport transport) bool {
 		s.config.metrics.PongTimeout(s.roomID, s.id)
 		s.config.logger.Debug("wspulse: pingPump stopping: ping failed",
 			zap.String("conn_id", s.id), zap.Error(err))
-		_ = transport.CloseNow()
+		_ = trans.CloseNow()
 		return false
 	}
 	return true
@@ -449,7 +449,7 @@ func (s *session) doPing(ctx context.Context, transport transport) bool {
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the heart that this transport
 // has died. If the heart is shutting down, cleanup is handled inline.
-func (s *session) readPump(ctx context.Context, transport transport, h *heart) {
+func (s *session) readPump(ctx context.Context, trans transport, h *heart) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -465,7 +465,7 @@ func (s *session) readPump(ctx context.Context, transport transport, h *heart) {
 
 		// Notify the heart that this transport died.
 		select {
-		case h.transportDied <- transportDiedMessage{session: s, transport: transport, err: readErr}:
+		case h.transportDied <- transportDiedMessage{session: s, transport: trans, err: readErr}:
 		case <-h.done:
 			// Hub has stopped; clean up inline.
 		}
@@ -483,10 +483,10 @@ func (s *session) readPump(ctx context.Context, transport transport, h *heart) {
 		}
 	}()
 
-	transport.SetReadLimit(s.config.maxMessageSize)
+	trans.SetReadLimit(s.config.maxMessageSize)
 
 	for {
-		_, data, err := transport.Read(ctx)
+		_, data, err := trans.Read(ctx)
 		if err != nil {
 			if ctx.Err() != nil || isNormalClose(err) {
 				s.config.logger.Debug("wspulse: connection closed normally",
@@ -538,9 +538,9 @@ func isNormalClose(err error) bool {
 // force-closes the underlying connection so that readPump's Read unblocks.
 //
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(ctx context.Context, transport transport, pumpDone chan struct{}) {
+func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan struct{}) {
 	defer func() {
-		_ = transport.CloseNow()
+		_ = trans.CloseNow()
 		close(pumpDone)
 	}()
 
@@ -568,14 +568,14 @@ func (s *session) writePump(ctx context.Context, transport transport, pumpDone c
 			// old transport may already be dead.
 			select {
 			case <-s.done:
-				_ = transport.Close(core.StatusNormalClosure, "")
+				_ = trans.Close(core.StatusNormalClosure, "")
 			default:
 			}
 			return
 		}
 
 		writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
-		err = transport.Write(writeCtx, s.config.codec.FrameType(), data)
+		err = trans.Write(writeCtx, s.config.codec.FrameType(), data)
 		cancel()
 		if err != nil {
 			if ctx.Err() != nil {
