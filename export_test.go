@@ -3,8 +3,6 @@ package wspulse
 import (
 	"net/http"
 	"time"
-
-	core "github.com/wspulse/core"
 )
 
 // DefaultPingInterval returns the default pingInterval from defaultConfig.
@@ -22,6 +20,12 @@ func DefaultWriteTimeout() time.Duration {
 // Clock exports the internal clock interface for testing only.
 type Clock = clock
 
+// Transport exports the internal transport interface for testing only.
+// A type alias (=) is used so that mock implementations in external _test
+// packages automatically satisfy the unexported transport interface without
+// an explicit cast. Same pattern as Clock = clock above.
+type Transport = transport
+
 // WithClock returns a HubOption that sets the clock. Test-only —
 // this file is only compiled during test builds.
 func WithClock(c Clock) HubOption {
@@ -34,7 +38,7 @@ func WithClock(c Clock) HubOption {
 // InjectTransport bypasses ServeHTTP and pushes a registerMessage directly
 // into the Hub's internal event loop. Test-only — allows component tests to
 // inject mock transports without HTTP upgrade.
-func InjectTransport(h Hub, connectionID, roomID string, transport core.Transport) {
+func InjectTransport(h Hub, connectionID, roomID string, transport Transport) {
 	if h == nil {
 		panic("wspulse: InjectTransport: hub must not be nil; use a hub created by NewHub")
 	}
