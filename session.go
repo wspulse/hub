@@ -71,7 +71,7 @@ type session struct {
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
 	mu           sync.Mutex           // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    core.Transport       // current physical connection; nil when suspended
+	transport    transport            // current physical connection; nil when suspended
 	pumpCancel   context.CancelFunc   // cancels the current pump context
 	pumpDone     chan struct{}        // closed by writePump on exit
 	graceTimer   *time.Timer          // resume window timer; nil when not suspended
@@ -243,7 +243,7 @@ func (s *session) Close() error {
 // all pre-resume frames precede post-resume frames in s.send.
 //
 // Must be called from the heart's event loop (single-goroutine serialization).
-func (s *session) attachWS(transport core.Transport, h *heart, onResumeComplete func()) {
+func (s *session) attachWS(transport transport, h *heart, onResumeComplete func()) {
 	s.mu.Lock()
 
 	// Stop the previous pump group if still running.
@@ -403,7 +403,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 // within writeTimeout. On failure, fires PongTimeout metric and calls
 // CloseNow() to force-close the transport (without cancelling the context,
 // so other pumps detect the error via their own I/O failures).
-func (s *session) pingPump(ctx context.Context, transport core.Transport) {
+func (s *session) pingPump(ctx context.Context, transport transport) {
 	ticker := s.config.clock.NewTicker(s.config.pingInterval)
 	defer ticker.Stop()
 
@@ -427,7 +427,7 @@ func (s *session) pingPump(ctx context.Context, transport core.Transport) {
 
 // doPing sends a single Ping with a writeTimeout deadline. Returns true if the
 // pong arrived successfully, false if the caller should exit.
-func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
+func (s *session) doPing(ctx context.Context, transport transport) bool {
 	pingCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
 	err := transport.Ping(pingCtx)
 	cancel()
@@ -449,7 +449,7 @@ func (s *session) doPing(ctx context.Context, transport core.Transport) bool {
 // readPump reads inbound messages from the transport and forwards them to the OnMessage
 // callback. When the read loop exits it signals the heart that this transport
 // has died. If the heart is shutting down, cleanup is handled inline.
-func (s *session) readPump(ctx context.Context, transport core.Transport, h *heart) {
+func (s *session) readPump(ctx context.Context, transport transport, h *heart) {
 	var readErr error
 	defer func() {
 		// Recover from panics in OnMessage handlers.
@@ -538,7 +538,7 @@ func isNormalClose(err error) bool {
 // force-closes the underlying connection so that readPump's Read unblocks.
 //
 // pumpDone is closed on exit so callers can wait for this pump to finish.
-func (s *session) writePump(ctx context.Context, transport core.Transport, pumpDone chan struct{}) {
+func (s *session) writePump(ctx context.Context, transport transport, pumpDone chan struct{}) {
 	defer func() {
 		_ = transport.CloseNow()
 		close(pumpDone)

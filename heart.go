@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	core "github.com/wspulse/core"
 	"github.com/wspulse/hub/ring"
 )
 
@@ -19,7 +18,7 @@ import (
 type registerMessage struct {
 	connectionID string
 	roomID       string
-	transport    core.Transport
+	transport    transport
 }
 
 // transportDiedMessage is sent by readPump when its WebSocket read loop exits.
@@ -27,8 +26,8 @@ type registerMessage struct {
 // destroy it (resume disabled / grace expired).
 type transportDiedMessage struct {
 	session   *session
-	transport core.Transport // the specific transport that died
-	err       error          // nil for normal closure
+	transport transport // the specific transport that died
+	err       error     // nil for normal closure
 }
 
 // graceExpiredMessage is sent by a time.AfterFunc when the resume window elapses
