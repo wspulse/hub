@@ -331,7 +331,7 @@ must be safe for concurrent use.
 | `ResumeAttempt`         | heart goroutine       |
 | `MessageBroadcast`      | heart goroutine       |
 | `MessageReceived`       | readPump goroutine  |
-| `HeartbeatFailed`           | pingPump goroutine  |
+| `HeartbeatFailed`      | pingPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
 | `FrameDropped`          | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
