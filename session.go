@@ -58,7 +58,7 @@ const (
 // Goroutine ownership:
 //   - readPump  : reads from transport, forwards decoded Frames to onMessage.
 //   - writePump : sole writer of application data frames on transport; drains session.send.
-//   - pingPump  : drives Ping heartbeat; fires PongTimeout metric on failure.
+//   - pingPump  : drives Ping heartbeat; fires HeartbeatFailed metric on failure.
 //
 // Lifecycle signal flow:
 //
@@ -400,7 +400,7 @@ func (s *session) detachWS() (epoch uint64, ok bool) {
 
 // pingPump drives the heartbeat ping/pong mechanism on the transport.
 // Sends a Ping at each tick of pingInterval and waits for the pong reply
-// within writeTimeout. On failure, fires PongTimeout metric and calls
+// within writeTimeout. On failure, fires HeartbeatFailed metric and calls
 // CloseNow() to force-close the transport (without cancelling the context,
 // so other pumps detect the error via their own I/O failures).
 func (s *session) pingPump(ctx context.Context, trans transport) {
@@ -433,11 +433,11 @@ func (s *session) doPing(ctx context.Context, trans transport) bool {
 	cancel()
 	if err != nil {
 		// context.Canceled means the pump context was cancelled (reconnect/close);
-		// this is not a pong timeout — exit silently without firing the metric.
+		// this is not a heartbeat failure — exit silently without firing the metric.
 		if ctx.Err() != nil {
 			return false
 		}
-		s.config.metrics.PongTimeout(s.roomID, s.id)
+		s.config.metrics.HeartbeatFailed(s.roomID, s.id)
 		s.config.logger.Debug("wspulse: pingPump stopping: ping failed",
 			zap.String("conn_id", s.id), zap.Error(err))
 		_ = trans.CloseNow()

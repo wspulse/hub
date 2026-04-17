@@ -184,7 +184,7 @@ The interface covers:
 | `MessageReceived` / `MessageSent` / `MessageBroadcast` | Throughput with byte sizes and fan-out |
 | `FrameDropped` / `SendBufferUtilization` | Backpressure visibility |
 | `ResumeAttempt` | Session resumption tracking |
-| `PongTimeout` | Heartbeat health |
+| `HeartbeatFailed` | Heartbeat health |
 
 Implement `MetricsCollector` to plug in any backend (Prometheus, OTel, or custom). See [doc/internals.md](doc/internals.md) for goroutine call sites and thread safety requirements.
 
