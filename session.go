@@ -433,7 +433,7 @@ func (s *session) doPing(ctx context.Context, trans transport) bool {
 	cancel()
 	if err != nil {
 		// context.Canceled means the pump context was cancelled (reconnect/close);
-		// this is not a pong timeout — exit silently without firing the metric.
+		// this is not a heartbeat failure — exit silently without firing the metric.
 		if ctx.Err() != nil {
 			return false
 		}
