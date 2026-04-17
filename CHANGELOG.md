@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Breaking changes
+
+- Renamed `MetricsCollector.PongTimeout` to `HeartbeatFailed`. The method fires
+  on any ping failure (pong timeout or transport error), not just timeouts. The
+  new name describes the outcome without implying a specific sub-case. No
+  behaviour change — only renaming.
+
 ## [0.9.3] - 2026-04-16
 
 ### Changed

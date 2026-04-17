@@ -28,7 +28,7 @@ attachWS(transport)
   ├─ go bridge          — propagates close(session.done) → pumpCancel()
   ├─ go readPump(ctx)   — reads inbound frames, calls OnMessage, signals heart on exit
   ├─ go writePump(ctx)  — drains session.send channel, sole writer of application data on transport
-  └─ go pingPump(ctx)   — drives Ping heartbeat, fires PongTimeout on failure
+  └─ go pingPump(ctx)   — drives Ping heartbeat, fires HeartbeatFailed on failure
 ```
 
 All pump goroutines share a single `pumpCtx` (derived from
@@ -53,7 +53,7 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
   On graceful shutdown (`ctx.Done()`), it first sends a close frame via
   `transport.Close(StatusNormalClosure, "")`.
 - `pingPump` sends periodic Pings with a `writeTimeout` timeout. On failure it
-  fires the `PongTimeout` metric and calls `transport.CloseNow()` to force the
+  fires the `HeartbeatFailed` metric and calls `transport.CloseNow()` to force the
   transport closed, causing `readPump` to detect the error and signal the heart.
   An initial ping is sent immediately on startup to detect dead-on-arrival
   connections without waiting a full `pingInterval`.
@@ -111,7 +111,7 @@ wspulse.NewHub(connect,
    connections.
 
 2. **Timeout disconnect** — If `Ping(ctx)` returns an error (timeout or
-   network failure), `pingPump` fires the `PongTimeout` metric and calls
+   network failure), `pingPump` fires the `HeartbeatFailed` metric and calls
    `transport.CloseNow()` to force-close the underlying connection. This
    causes `readPump`'s `Read(ctx)` to return an error, which triggers the
    standard teardown path via `transportDiedMessage`.
@@ -331,7 +331,7 @@ must be safe for concurrent use.
 | `ResumeAttempt`         | heart goroutine       |
 | `MessageBroadcast`      | heart goroutine       |
 | `MessageReceived`       | readPump goroutine  |
-| `PongTimeout`           | pingPump goroutine  |
+| `HeartbeatFailed`      | pingPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
 | `FrameDropped`          | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |

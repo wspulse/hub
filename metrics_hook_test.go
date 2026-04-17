@@ -261,11 +261,11 @@ func TestMetricsCollector_FrameDropped_BroadcastDropOldest(t *testing.T) {
 	}
 }
 
-// ── Metrics: pong timeout ───────────────────────────────────────────────────
-// PongTimeout is fired by pingPump when transport.Ping() fails. Install a
+// ── Metrics: heartbeat failed ────────────────────────────────────────────────
+// HeartbeatFailed is fired by pingPump when transport.Ping() fails. Install a
 // ping handler that blocks until signalled, then returns an error.
 
-func TestMetricsCollector_PongTimeout(t *testing.T) {
+func TestMetricsCollector_HeartbeatFailed(t *testing.T) {
 	t.Parallel()
 	rec := &recordingCollector{}
 	connected := make(chan struct{}, 1)
@@ -308,7 +308,7 @@ func TestMetricsCollector_PongTimeout(t *testing.T) {
 
 	requireReceive(t, disconnected)
 
-	assert.Equal(t, 1, rec.countByName("PongTimeout"), "PongTimeout")
+	assert.Equal(t, 1, rec.countByName("HeartbeatFailed"), "HeartbeatFailed")
 }
 
 // ── Metrics: shutdown ───────────────────────────────────────────────────────
