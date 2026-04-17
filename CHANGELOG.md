@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-17
+
 ### Breaking changes
 
 - Renamed `MetricsCollector.PongTimeout` to `HeartbeatFailed`. The method fires
