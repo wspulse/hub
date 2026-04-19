@@ -116,7 +116,7 @@ func WithOnTransportDrop(fn func(Connection, error)) HubOption {
 // resume window.
 //
 // When this fires, OnConnect and OnDisconnect are NOT called — the session
-// continues as if the transport had never dropped. Buffered frames are replayed
+// continues as if the transport had never dropped. Buffered messages are replayed
 // to the new transport before the callback is invoked.
 //
 // This callback does NOT fire when:
@@ -170,7 +170,7 @@ func WithMaxMessageSize(n int64) HubOption {
 	return func(c *hubConfig) { c.maxMessageSize = n }
 }
 
-// WithSendBufferSize sets the per-connection outbound channel capacity (number of frames).
+// WithSendBufferSize sets the per-connection outbound channel capacity (number of messages).
 // n must be in [1, 4096].
 func WithSendBufferSize(n int) HubOption {
 	if n < 1 {

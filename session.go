@@ -215,7 +215,7 @@ func (s *session) Close() error {
 
 // attachWS sets the physical WebSocket connection for this session and
 // spawns readPump + writePump + pingPump goroutines. If the session was
-// suspended, buffered frames are drained into the send channel before the
+// suspended, buffered messages are drained into the send queue before the
 // new pumps start.
 //
 // onResumeComplete, if non-nil, is invoked in a separate goroutine after
@@ -229,9 +229,9 @@ func (s *session) Close() error {
 // This avoids three problems:
 //   - The heart event loop being blocked for up to writeTimeout while waiting
 //     for the old writePump to finish.
-//   - Resume-buffer frames being drained into s.send while the old
+//   - Resume-buffer messages being drained into s.send while the old
 //     writePump is still alive, which could cause the old pump to consume
-//     and lose those frames by writing them to the dead WebSocket.
+//     and lose those messages by writing them to the dead WebSocket.
 //   - readPump reporting a transportDied while the session is still in
 //     stateSuspended (during the drain phase), which would leave the
 //     session in a zombie state — stateConnected with no active pumps.
@@ -277,9 +277,9 @@ func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {
 	// Transition goroutine: wait for the old writePump to exit, drain
 	// the resume buffer, and start the new pump group. This guarantees:
 	// 1. Only one writePump drains s.send at a time.
-	// 2. Resume-buffer frames enter s.send only after the old pump is gone.
+	// 2. Resume-buffer messages enter s.send only after the old pump is gone.
 	// 3. The heart event loop is never blocked.
-	// 4. All buffered frames precede frames sent after the state flip.
+	// 4. All buffered messages precede messages sent after the state flip.
 	// 5. readPump only runs when state is stateConnected, preventing
 	//    transportDied messages from arriving during stateSuspended.
 	go func() {
@@ -299,8 +299,8 @@ func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {
 				zap.Int("buffered", bufferedCount),
 			)
 			for {
-				frames := buffer.Drain()
-				if len(frames) == 0 {
+				messages := buffer.Drain()
+				if len(messages) == 0 {
 					// Guard: if Close() was called concurrently, do not
 					// overwrite stateClosed with stateConnected.
 					if s.state != stateClosed {
@@ -314,7 +314,7 @@ func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {
 					break
 				}
 				s.mu.Unlock()
-				for _, data := range frames {
+				for _, data := range messages {
 					evicted, err := s.send.ForceEnqueue(data)
 					if err != nil {
 						// Queue closed — session terminated during drain.
