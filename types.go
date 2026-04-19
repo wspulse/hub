@@ -8,7 +8,7 @@ type Message = core.Message
 // Codec encodes and decodes Messages for transmission.
 type Codec = core.Codec
 
-// JSONCodec is the default Codec. Frames are encoded as JSON text frames.
+// JSONCodec is the default Codec. Messages are encoded as JSON text frames.
 var JSONCodec = core.JSONCodec
 
 // WebSocket message type constants.

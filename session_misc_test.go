@@ -82,7 +82,7 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 
 // ── ReadPump malformed message ──────────────────────────────────────────────
 
-func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
+func TestReadPump_MalformedMessage_DropsAndContinues(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	received := make(chan wspulse.Message, 2)

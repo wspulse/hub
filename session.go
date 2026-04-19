@@ -240,7 +240,7 @@ func (s *session) Close() error {
 // drain so that concurrent Send() calls continue buffering to resumeBuffer.
 // The drain loop runs until resumeBuffer is empty, then atomically flips the
 // state to stateConnected under the same lock acquisition. This ensures
-// all pre-resume frames precede post-resume frames in s.send.
+// all pre-resume messages precede post-resume messages in s.send.
 //
 // Must be called from the heart's event loop (single-goroutine serialization).
 func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {

@@ -105,7 +105,7 @@ func TestBroadcast_ReachesConnectedClient(t *testing.T) {
 
 // ── Send ─────────────────────────────────────────────────────────────────────
 
-func TestSend_DeliversFrameToConnection(t *testing.T) {
+func TestSend_DeliversMessageToConnection(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewHub(
