@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/hub`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Frame`, `Codec`).
+wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/hub`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Message`, `Codec`).
 
 ## Architecture
 

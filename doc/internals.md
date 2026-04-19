@@ -26,7 +26,7 @@ plus one dedicated **bridge goroutine**:
 ```
 attachWS(transport)
   ├─ go bridge          — propagates close(session.done) → pumpCancel()
-  ├─ go readPump(ctx)   — reads inbound frames, calls OnMessage, signals heart on exit
+  ├─ go readPump(ctx)   — reads inbound messages, calls OnMessage, signals heart on exit
   ├─ go writePump(ctx)  — drains session.send channel, sole writer of application data on transport
   └─ go pingPump(ctx)   — drives Ping heartbeat, fires HeartbeatFailed on failure
 ```
@@ -65,7 +65,7 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
   `session.Close()` after `done` is closed, which unblocks any goroutine
   blocked in `sendQueue.Pop`. This eliminates the TOCTOU race present in the
   previous three-select drop-oldest pattern.
-- `writePump` calls `s.send.Pop(pumpCtx)`, which blocks until a frame is
+- `writePump` calls `s.send.Pop(pumpCtx)`, which blocks until a message is
   available, the context is cancelled, or the queue is closed.
 
 ---
@@ -130,22 +130,22 @@ Each session maintains a `session.send *sendQueue` — a mutex-guarded
 `ring.Buffer[[]byte]` with a `sync.Cond` for blocking `Pop`. Its capacity
 is configurable (default **256**). When `Hub.Broadcast` or `Hub.Send` is called:
 
-1. The encoded frame bytes are passed to `sendQueue.Enqueue` or
+1. The encoded message bytes are passed to `sendQueue.Enqueue` or
    `sendQueue.ForceEnqueue` (both hold the mutex for the entire operation).
 2. If the buffer is **full**, `ErrSendBufferFull` is returned to the caller
    (for direct `Send`, via `Enqueue`) or **drop-oldest** backpressure is applied
-   atomically (for `Broadcast`, via `ForceEnqueue`): the oldest frame is evicted
-   and the new frame is inserted in a single critical section — no TOCTOU race.
+   atomically (for `Broadcast`, via `ForceEnqueue`): the oldest message is evicted
+   and the new message is inserted in a single critical section — no TOCTOU race.
 3. When `resumeWindow > 0` and the session is suspended (no active WebSocket),
-   frames are buffered to an in-memory `ring.Buffer` instead of the send queue.
-   These frames are replayed when the client reconnects.
+   messages are buffered to an in-memory `ring.Buffer` instead of the send queue.
+   These messages are replayed when the client reconnects.
 
 This ensures a slow or lagging connection cannot block the heart event loop or
 stall broadcasts to other healthy connections.
 
 If the application needs reliable delivery for a specific connection, it should
 call `connection.Send` directly and handle `ErrSendBufferFull` at the call
-site — for example, by scheduling a retry or incrementing a dropped-frames
+site — for example, by scheduling a retry or incrementing a dropped-messages
 metric.
 
 ---
@@ -203,7 +203,7 @@ swapped in silently.
 ```
 [*] → Connected : handleRegister creates session + transport
 
-Connected → Suspended : transport dies, resumeWindow > 0 (start timer, buffer frames, onTransportDrop fires)
+Connected → Suspended : transport dies, resumeWindow > 0 (start timer, buffer messages, onTransportDrop fires)
 Connected → Closed    : transport dies, resumeWindow == 0 (onDisconnect fires)
 Connected → Closed    : Kick() or Close() (onDisconnect fires)
 Connected → Closed    : duplicate connectionID arrives (old session kicked, onDisconnect fires with ErrDuplicateConnectionID; new session created)
@@ -223,7 +223,7 @@ WS1 connection drops
   → WS1 sends transportDiedMessage(session, err) to Heart
   → Heart detaches WS1, starts resumeWindow timer
   → go onTransportDrop(session, err)
-  → Session state = suspended, frames buffered to ringBuffer
+  → Session state = suspended, messages buffered to ringBuffer
 
 WS2 client reconnects with same connectionID
   → WS2 sends register(connectionID, transport) to Heart
@@ -239,13 +239,13 @@ connection.
 
 ### Resume Buffer
 
-During the suspended state, frames sent via `session.Send()` or
+During the suspended state, messages sent via `session.Send()` or
 `Hub.Broadcast()` are stored in an in-memory `ringBuffer` with a capacity
-equal to `sendBufferSize` (default 256 frames). When the buffer is full, the
-oldest frame is dropped (same backpressure strategy as the send channel during
+equal to `sendBufferSize` (default 256 messages). When the buffer is full, the
+oldest message is dropped (same backpressure strategy as the send channel during
 normal operation).
 
-On reconnect, buffered frames are drained from the ring buffer into the send
+On reconnect, buffered messages are drained from the ring buffer into the send
 channel before the new `writePump` starts, ensuring ordering is preserved.
 
 ### Effective Reconnect Window
@@ -334,7 +334,7 @@ must be safe for concurrent use.
 | `HeartbeatFailed`      | pingPump goroutine  |
 | `MessageSent`           | writePump goroutine |
 | `SendBufferUtilization` | writePump goroutine |
-| `FrameDropped`          | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
+| `MessageDropped`        | heart goroutine (broadcast), caller goroutine (Send), or transition goroutine (resume drain) |
 
 ### Connection duration
 

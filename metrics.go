@@ -84,22 +84,22 @@ type MetricsCollector interface {
 	// message is read, before decoding. sizeBytes is the raw wire size.
 	MessageReceived(roomID string, sizeBytes int)
 
-	// MessageBroadcast is called after a broadcast frame is fanned out to
-	// all sessions in a room. sizeBytes is the pre-encoded frame size;
+	// MessageBroadcast is called after a broadcast message is fanned out to
+	// all sessions in a room. sizeBytes is the pre-encoded message size;
 	// fanOut is the number of recipient sessions (including suspended ones).
 	MessageBroadcast(roomID string, sizeBytes int, fanOut int)
 
-	// MessageSent is called in the writePump after a frame is successfully
-	// written to the WebSocket transport. sizeBytes is the encoded frame size.
+	// MessageSent is called in the writePump after a message is successfully
+	// written to the WebSocket transport. sizeBytes is the encoded message size.
 	MessageSent(roomID, connectionID string, sizeBytes int)
 
-	// FrameDropped is called whenever a frame is discarded due to send buffer
+	// MessageDropped is called whenever a message is discarded due to send buffer
 	// backpressure. This covers drops from Send (buffer full), Broadcast
 	// (drop-oldest), and resume drain (buffer full during replay).
-	// In the drop-oldest path, two FrameDropped events may fire: one for the
-	// oldest frame evicted and one for the new frame if it still cannot be
-	// enqueued — both represent real frame loss.
-	FrameDropped(roomID, connectionID string)
+	// In the drop-oldest path, two MessageDropped events may fire: one for the
+	// oldest message evicted and one for the new message if it still cannot be
+	// enqueued — both represent real message loss.
+	MessageDropped(roomID, connectionID string)
 
 	// SendBufferUtilization is called in the writePump after every successful
 	// write. used and capacity report the current send channel occupancy.
@@ -152,8 +152,8 @@ func (NoopCollector) MessageBroadcast(_ string, _ int, _ int) {}
 // MessageSent is a no-op. See MetricsCollector.MessageSent.
 func (NoopCollector) MessageSent(_, _ string, _ int) {}
 
-// FrameDropped is a no-op. See MetricsCollector.FrameDropped.
-func (NoopCollector) FrameDropped(_, _ string) {}
+// MessageDropped is a no-op. See MetricsCollector.MessageDropped.
+func (NoopCollector) MessageDropped(_, _ string) {}
 
 // SendBufferUtilization is a no-op. See MetricsCollector.SendBufferUtilization.
 func (NoopCollector) SendBufferUtilization(_, _ string, _, _ int) {}

@@ -36,7 +36,7 @@ type HubOption func(*hubConfig) //nolint:revive
 type hubConfig struct {
 	connect            ConnectFunc
 	onConnect          func(Connection)
-	onMessage          func(Connection, Frame)
+	onMessage          func(Connection, Message)
 	onDisconnect       func(Connection, error)
 	onTransportDrop    func(Connection, error)
 	onTransportRestore func(Connection)
@@ -72,7 +72,7 @@ func WithOnConnect(fn func(Connection)) HubOption {
 	return func(c *hubConfig) { c.onConnect = fn }
 }
 
-// WithOnMessage registers a callback invoked for every inbound Frame received from
+// WithOnMessage registers a callback invoked for every inbound Message received from
 // a connected client. The callback is called from the connection's readPump goroutine
 // and must return quickly; use a goroutine for heavy work.
 //
@@ -80,7 +80,7 @@ func WithOnConnect(fn func(Connection)) HubOption {
 // On resume, the new readPump starts only after the old one has fully exited.
 // Handlers should still be safe for concurrent use when application code
 // accesses Connection from other goroutines (e.g. Send from an HTTP handler).
-func WithOnMessage(fn func(Connection, Frame)) HubOption {
+func WithOnMessage(fn func(Connection, Message)) HubOption {
 	return func(c *hubConfig) { c.onMessage = fn }
 }
 

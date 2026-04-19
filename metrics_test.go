@@ -30,7 +30,7 @@ func TestNoopCollector_AllMethodsCallable(t *testing.T) {
 	c.MessageReceived("room", 100)
 	c.MessageBroadcast("room", 100, 5)
 	c.MessageSent("room", "conn", 100)
-	c.FrameDropped("room", "conn")
+	c.MessageDropped("room", "conn")
 	c.SendBufferUtilization("room", "conn", 10, 256)
 	c.HeartbeatFailed("room", "conn")
 }
@@ -115,8 +115,8 @@ func (r *recordingCollector) MessageBroadcast(roomID string, sizeBytes int, fanO
 func (r *recordingCollector) MessageSent(roomID, connectionID string, sizeBytes int) {
 	r.record(metricsEvent{name: "MessageSent", roomID: roomID, connectionID: connectionID, sizeBytes: sizeBytes})
 }
-func (r *recordingCollector) FrameDropped(roomID, connectionID string) {
-	r.record(metricsEvent{name: "FrameDropped", roomID: roomID, connectionID: connectionID})
+func (r *recordingCollector) MessageDropped(roomID, connectionID string) {
+	r.record(metricsEvent{name: "MessageDropped", roomID: roomID, connectionID: connectionID})
 }
 func (r *recordingCollector) SendBufferUtilization(roomID, connectionID string, used, capacity int) {
 	r.record(metricsEvent{name: "SendBufferUtilization", roomID: roomID, connectionID: connectionID, used: used, capacity: capacity})

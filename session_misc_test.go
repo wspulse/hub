@@ -28,7 +28,7 @@ func TestReadPumpPanicRecovery(t *testing.T) {
 	disconnected := make(chan struct{}, 1)
 	srv := wspulse.NewHub(
 		acceptAll,
-		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Frame) {
+		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Message) {
 			panic("boom")
 		}),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -43,7 +43,7 @@ func TestReadPumpPanicRecovery(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Inject a message that triggers the panic in OnMessage.
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Message{Event: "trigger"})
 	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	requireReceive(t, disconnected)
@@ -55,7 +55,7 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	disconnectErr := make(chan error, 1)
 	srv := wspulse.NewHub(
 		acceptAll,
-		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Frame) {
+		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Message) {
 			panic("typed-boom")
 		}),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
@@ -69,7 +69,7 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "trigger"})
+	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Message{Event: "trigger"})
 	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	got := requireReceive(t, disconnectErr)
@@ -80,18 +80,18 @@ func TestReadPumpPanic_ErrorsAsPanicError(t *testing.T) {
 	assert.Equal(t, "wspulse: onMessage panic: typed-boom", pe.Error())
 }
 
-// ── ReadPump malformed frame ────────────────────────────────────────────────
+// ── ReadPump malformed message ──────────────────────────────────────────────
 
 func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	received := make(chan wspulse.Frame, 2)
+	received := make(chan wspulse.Message, 2)
 	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
 		}),
-		wspulse.WithOnMessage(func(_ wspulse.Connection, f wspulse.Frame) {
+		wspulse.WithOnMessage(func(_ wspulse.Connection, f wspulse.Message) {
 			received <- f
 		}),
 	)
@@ -99,11 +99,11 @@ func TestReadPump_MalformedFrame_DropsAndContinues(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	// Inject malformed frame (not valid JSON).
+	// Inject malformed message (not valid JSON).
 	mt.InjectMessage(wspulse.TextMessage, []byte("not-json"))
 
-	// Inject valid frame after the malformed one.
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "valid"})
+	// Inject valid message after the malformed one.
+	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Message{Event: "valid"})
 	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	f := requireReceive(t, received)
@@ -134,18 +134,18 @@ func TestBroadcastDropsOldest_SlowClient(t *testing.T) {
 		if i == totalBroadcasts-1 {
 			typ = "newest"
 		}
-		_ = srv.Broadcast("test-room", wspulse.Frame{Event: typ, Payload: []byte(`"x"`)})
+		_ = srv.Broadcast("test-room", wspulse.Message{Event: typ, Payload: []byte(`"x"`)})
 	}
-	_ = srv.Broadcast("test-room", wspulse.Frame{Event: "done"})
+	_ = srv.Broadcast("test-room", wspulse.Message{Event: "done"})
 
 	// Read from mock transport until sentinel.
-	var frames []wspulse.Frame
+	var messages []wspulse.Message
 	for {
 		w, ok := mt.WaitWrite(time.Second)
 		if !ok {
-			require.Fail(t, "timed out waiting for frames")
+			require.Fail(t, "timed out waiting for messages")
 		}
-		// Skip ping frames.
+		// Skip ping frames (WebSocket protocol-level).
 		if w.messageType != wspulse.TextMessage {
 			continue
 		}
@@ -156,18 +156,18 @@ func TestBroadcastDropsOldest_SlowClient(t *testing.T) {
 		if f.Event == "done" {
 			break
 		}
-		frames = append(frames, f)
+		messages = append(messages, f)
 	}
 
-	require.NotEmpty(t, frames)
+	require.NotEmpty(t, messages)
 	found := false
-	for _, f := range frames {
+	for _, f := range messages {
 		if f.Event == "newest" {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "newest frame not found; drop-oldest did not preserve it")
+	assert.True(t, found, "newest message not found; drop-oldest did not preserve it")
 }
 
 // ── Concurrent broadcast ────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ func TestConcurrentBroadcast_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < messagesPerWorker; j++ {
-				_ = srv.Broadcast("room", wspulse.Frame{Event: "ping"})
+				_ = srv.Broadcast("room", wspulse.Message{Event: "ping"})
 			}
 		}()
 	}
@@ -260,7 +260,7 @@ func TestConcurrentCloseAndBroadcast_NoRace(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 100; i++ {
-			_ = srv.Broadcast("test-room", wspulse.Frame{Event: "msg"})
+			_ = srv.Broadcast("test-room", wspulse.Message{Event: "msg"})
 		}
 	}()
 	go func() {
@@ -319,7 +319,7 @@ func TestConnectionSend_AfterClose_ReturnsErrConnectionClosed(t *testing.T) {
 	mt.InjectError(errors.New("closed"))
 	requireReceive(t, disconnected)
 
-	err := conn.Send(wspulse.Frame{Event: "after-close"})
+	err := conn.Send(wspulse.Message{Event: "after-close"})
 	assert.ErrorIs(t, err, wspulse.ErrConnectionClosed)
 }
 
@@ -345,7 +345,7 @@ func TestBroadcast_SkipsClosedSession(t *testing.T) {
 	requireReceive(t, disconnected)
 
 	// Broadcast to the room — should not panic or error despite closed session.
-	err := srv.Broadcast("test-room", wspulse.Frame{Event: "after-close"})
+	err := srv.Broadcast("test-room", wspulse.Message{Event: "after-close"})
 	require.NoError(t, err)
 }
 
@@ -385,15 +385,15 @@ func TestGetConnections_EmptyAfterDisconnect(t *testing.T) {
 // failingCodec always returns an error on Encode.
 type failingCodec struct{}
 
-func (failingCodec) Encode(wspulse.Frame) ([]byte, error) {
+func (failingCodec) Encode(wspulse.Message) ([]byte, error) {
 	return nil, errors.New("codec: encode failed")
 }
 
-func (failingCodec) Decode(data []byte) (wspulse.Frame, error) {
+func (failingCodec) Decode(data []byte) (wspulse.Message, error) {
 	return wspulse.JSONCodec.Decode(data)
 }
 
-func (failingCodec) FrameType() core.MessageType { return core.TextMessage }
+func (failingCodec) WireType() core.MessageType { return core.TextMessage }
 
 func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 	t.Parallel()
@@ -409,7 +409,7 @@ func TestBroadcast_EncodeError_ReturnsError(t *testing.T) {
 
 	_ = injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	err := srv.Broadcast("test-room", wspulse.Frame{Event: "test"})
+	err := srv.Broadcast("test-room", wspulse.Message{Event: "test"})
 	assert.Error(t, err)
 }
 
@@ -429,7 +429,7 @@ func TestConnectionSend_EncodeError_ReturnsError(t *testing.T) {
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt)
 	conn := requireReceive(t, connected)
 
-	err := conn.Send(wspulse.Frame{Event: "test"})
+	err := conn.Send(wspulse.Message{Event: "test"})
 	assert.Error(t, err)
 }
 
@@ -454,7 +454,7 @@ func TestNoOnMessage_ReadPumpStillProcesses(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Send a message — readPump should process it without error even with no OnMessage.
-	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ignored"})
+	encoded, _ := wspulse.JSONCodec.Encode(wspulse.Message{Event: "ignored"})
 	mt.InjectMessage(wspulse.TextMessage, encoded)
 
 	// Then kill the transport.
@@ -550,7 +550,7 @@ func TestConnectionSend_DoneClosesDuringEnqueue(t *testing.T) {
 	requireReceive(t, disconnected)
 
 	// Send after done is closed.
-	err := conn.Send(wspulse.Frame{Event: "late"})
+	err := conn.Send(wspulse.Message{Event: "late"})
 	assert.ErrorIs(t, err, wspulse.ErrConnectionClosed)
 }
 

@@ -25,9 +25,9 @@ type Connection interface {
 	// RoomID returns the room this connection belongs to, as provided by ConnectFunc.
 	RoomID() string
 
-	// Send enqueues f for delivery to the remote peer.
+	// Send enqueues m for delivery to the remote peer.
 	// Returns ErrConnectionClosed or ErrSendBufferFull on failure.
-	Send(f Frame) error
+	Send(m Message) error
 
 	// Close initiates a graceful shutdown of the session.
 	Close() error
@@ -56,8 +56,8 @@ const (
 //   - session.send is shared across reconnects — it persists for the session lifetime.
 //
 // Goroutine ownership:
-//   - readPump  : reads from transport, forwards decoded Frames to onMessage.
-//   - writePump : sole writer of application data frames on transport; drains session.send.
+//   - readPump  : reads from transport, forwards decoded Messages to onMessage.
+//   - writePump : sole writer of application data on transport; drains session.send.
 //   - pingPump  : drives Ping heartbeat; fires HeartbeatFailed metric on failure.
 //
 // Lifecycle signal flow:
@@ -67,7 +67,7 @@ const (
 type session struct {
 	id     string
 	roomID string
-	send   *sendQueue    // outbound frame queue; shared across reconnects
+	send   *sendQueue    // outbound message queue; shared across reconnects
 	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
 
 	mu           sync.Mutex           // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
@@ -89,14 +89,14 @@ func (s *session) ID() string            { return s.id }
 func (s *session) RoomID() string        { return s.roomID }
 func (s *session) Done() <-chan struct{} { return s.done }
 
-// Send encodes f and enqueues the bytes for delivery to the remote peer.
-// If the session is suspended (within resume window), the frame is buffered
+// Send encodes m and enqueues the bytes for delivery to the remote peer.
+// If the session is suspended (within resume window), the message is buffered
 // to the resume ring buffer instead of the outbound send queue.
 //
 // The select is a fast-path optimisation: skip encoding when the session is
 // already closed. The authoritative closed check is sendQueue.Enqueue, which
 // inspects q.closed under the queue mutex.
-func (s *session) Send(f Frame) error {
+func (s *session) Send(m Message) error {
 	// Fast path: bail early if the session is already closed.
 	select {
 	case <-s.done:
@@ -104,7 +104,7 @@ func (s *session) Send(f Frame) error {
 	default:
 	}
 
-	data, err := s.config.codec.Encode(f)
+	data, err := s.config.codec.Encode(m)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (s *session) Send(f Frame) error {
 // the session state. Used by both Send (after encoding) and the hub's
 // broadcast path (which pre-encodes once for all connections).
 //
-// When dropOldest is true and the send buffer is full, the oldest frame
+// When dropOldest is true and the send buffer is full, the oldest message
 // in the buffer is discarded to make room for data. This is the
 // backpressure strategy used by Broadcast. When false, ErrSendBufferFull
 // is returned immediately (the strategy used by Send).
@@ -127,12 +127,12 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 		dropped := s.resumeBuffer.ForcePush(data)
 		s.mu.Unlock()
 		if dropped {
-			s.config.metrics.FrameDropped(s.roomID, s.id)
-			s.config.logger.Debug("wspulse: oldest frame dropped from resumeBuffer (backpressure)",
+			s.config.metrics.MessageDropped(s.roomID, s.id)
+			s.config.logger.Debug("wspulse: oldest message dropped from resumeBuffer (backpressure)",
 				zap.String("conn_id", s.id),
 			)
 		} else {
-			s.config.logger.Debug("wspulse: frame buffered to resumeBuffer",
+			s.config.logger.Debug("wspulse: message buffered to resumeBuffer",
 				zap.String("conn_id", s.id),
 			)
 		}
@@ -146,20 +146,20 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 			return err
 		}
 		if evicted {
-			s.config.logger.Debug("wspulse: oldest frame dropped from send buffer (backpressure)",
+			s.config.logger.Debug("wspulse: oldest message dropped from send buffer (backpressure)",
 				zap.String("conn_id", s.id),
 			)
-			s.config.metrics.FrameDropped(s.roomID, s.id)
+			s.config.metrics.MessageDropped(s.roomID, s.id)
 		}
 		return nil
 	}
 
 	err := s.send.Enqueue(data)
 	if err == ErrSendBufferFull {
-		s.config.logger.Debug("wspulse: send buffer full, dropping frame",
+		s.config.logger.Debug("wspulse: send buffer full, dropping message",
 			zap.String("conn_id", s.id),
 		)
-		s.config.metrics.FrameDropped(s.roomID, s.id)
+		s.config.metrics.MessageDropped(s.roomID, s.id)
 	}
 	return err
 }
@@ -236,7 +236,7 @@ func (s *session) Close() error {
 //     stateSuspended (during the drain phase), which would leave the
 //     session in a zombie state — stateConnected with no active pumps.
 //
-// Frame ordering guarantee: the state remains stateSuspended during the
+// Message ordering guarantee: the state remains stateSuspended during the
 // drain so that concurrent Send() calls continue buffering to resumeBuffer.
 // The drain loop runs until resumeBuffer is empty, then atomically flips the
 // state to stateConnected under the same lock acquisition. This ensures
@@ -324,12 +324,12 @@ func (s *session) attachWS(trans transport, h *heart, onResumeComplete func()) {
 						break
 					}
 					if evicted {
-						s.config.logger.Debug("wspulse: oldest frame dropped to make room for resume frame",
+						s.config.logger.Debug("wspulse: oldest message dropped to make room for resume message",
 							zap.String("conn_id", s.id),
 						)
-						s.config.metrics.FrameDropped(s.roomID, s.id)
+						s.config.metrics.MessageDropped(s.roomID, s.id)
 					} else {
-						s.config.logger.Debug("wspulse: resume frame enqueued",
+						s.config.logger.Debug("wspulse: resume message enqueued",
 							zap.String("conn_id", s.id),
 						)
 					}
@@ -500,12 +500,12 @@ func (s *session) readPump(ctx context.Context, trans transport, h *heart) {
 		}
 		s.config.metrics.MessageReceived(s.roomID, len(data))
 		if fn := s.config.onMessage; fn != nil {
-			frame, decodeErr := s.config.codec.Decode(data)
+			msg, decodeErr := s.config.codec.Decode(data)
 			if decodeErr != nil {
 				s.config.logger.Warn("wspulse: decode failed", zap.String("conn_id", s.id), zap.Error(decodeErr))
 				continue
 			}
-			fn(s, frame)
+			fn(s, msg)
 		}
 	}
 }
@@ -575,7 +575,7 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 		}
 
 		writeCtx, cancel := context.WithTimeout(ctx, s.config.writeTimeout)
-		err = trans.Write(writeCtx, s.config.codec.FrameType(), data)
+		err = trans.Write(writeCtx, s.config.codec.WireType(), data)
 		cancel()
 		if err != nil {
 			if ctx.Err() != nil {

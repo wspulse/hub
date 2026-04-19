@@ -28,13 +28,13 @@ func injectAndWait(t *testing.T, srv wspulse.Hub, connectionID, roomID string, c
 
 // ── OnConnect ────────────────────────────────────────────────────────────────
 
-func TestOnConnect_SendsFrame(t *testing.T) {
+func TestOnConnect_SendsMessage(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(connection wspulse.Connection) {
-			_ = connection.Send(wspulse.Frame{Event: "welcome", Payload: []byte(`"hello"`)})
+			_ = connection.Send(wspulse.Message{Event: "welcome", Payload: []byte(`"hello"`)})
 			connected <- struct{}{}
 		}),
 	)
@@ -42,7 +42,7 @@ func TestOnConnect_SendsFrame(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	// writePump encodes the frame and writes to mock transport.
+	// writePump encodes the message and writes to mock transport.
 	w, ok := mt.WaitWrite(time.Second)
 	require.True(t, ok, "expected a write from writePump")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -55,13 +55,13 @@ func TestOnConnect_SendsFrame(t *testing.T) {
 func TestOnMessage_CallbackFires(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 1)
-	received := make(chan wspulse.Frame, 1)
+	received := make(chan wspulse.Message, 1)
 	srv := wspulse.NewHub(
 		acceptAll,
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			connected <- struct{}{}
 		}),
-		wspulse.WithOnMessage(func(_ wspulse.Connection, f wspulse.Frame) {
+		wspulse.WithOnMessage(func(_ wspulse.Connection, f wspulse.Message) {
 			received <- f
 		}),
 	)
@@ -70,7 +70,7 @@ func TestOnMessage_CallbackFires(t *testing.T) {
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Inject a message into readPump via mock transport.
-	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "msg", Payload: []byte(`{"text":"hello"}`)})
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Message{Event: "msg", Payload: []byte(`{"text":"hello"}`)})
 	require.NoError(t, err)
 	mt.InjectMessage(wspulse.TextMessage, encoded)
 
@@ -93,8 +93,8 @@ func TestBroadcast_ReachesConnectedClient(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	frame := wspulse.Frame{Event: "notice", Payload: []byte(`"hello room"`)}
-	require.NoError(t, srv.Broadcast("test-room", frame))
+	msg := wspulse.Message{Event: "notice", Payload: []byte(`"hello room"`)}
+	require.NoError(t, srv.Broadcast("test-room", msg))
 
 	w, ok := mt.WaitWrite(time.Second)
 	require.True(t, ok, "expected broadcast write")
@@ -118,8 +118,8 @@ func TestSend_DeliversFrameToConnection(t *testing.T) {
 
 	mt := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
-	frame := wspulse.Frame{Event: "direct", Payload: []byte(`"hi"`)}
-	require.NoError(t, srv.Send("test-connection", frame))
+	msg := wspulse.Message{Event: "direct", Payload: []byte(`"hi"`)}
+	require.NoError(t, srv.Send("test-connection", msg))
 
 	w, ok := mt.WaitWrite(time.Second)
 	require.True(t, ok, "expected direct send write")
@@ -230,8 +230,8 @@ func TestDuplicateConnectionID_OldKickedNewReachable(t *testing.T) {
 	requireReceive(t, connected)
 
 	// Verify second connection is reachable.
-	frame := wspulse.Frame{Event: "ok", Payload: []byte(`"after-kick"`)}
-	require.NoError(t, srv.Send("test-connection", frame))
+	msg := wspulse.Message{Event: "ok", Payload: []byte(`"after-kick"`)}
+	require.NoError(t, srv.Send("test-connection", msg))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write to second connection")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -268,7 +268,7 @@ func TestBroadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
-	err := srv.Broadcast("nonexistent-room", wspulse.Frame{Event: "msg"})
+	err := srv.Broadcast("nonexistent-room", wspulse.Message{Event: "msg"})
 	require.NoError(t, err)
 }
 
@@ -302,7 +302,7 @@ func TestMultipleRooms_BroadcastIsolation(t *testing.T) {
 	mtB := injectAndWait(t, srv, "conn-b", "room-b", connectedB)
 
 	// Broadcast to room-a only.
-	require.NoError(t, srv.Broadcast("room-a", wspulse.Frame{Event: "hello"}))
+	require.NoError(t, srv.Broadcast("room-a", wspulse.Message{Event: "hello"}))
 
 	// room-a client should receive it.
 	w, ok := mtA.WaitWrite(time.Second)
@@ -388,7 +388,7 @@ func TestConnectionSend_BufferFull_ReturnsErrSendBufferFull(t *testing.T) {
 	// Rapid-fire send to fill the buffer.
 	var gotBufferFull bool
 	for i := 0; i < 200; i++ {
-		err := conn.Send(wspulse.Frame{Event: "flood"})
+		err := conn.Send(wspulse.Message{Event: "flood"})
 		if errors.Is(err, wspulse.ErrSendBufferFull) {
 			gotBufferFull = true
 			break

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Breaking changes
+
+- Renamed `Frame` type alias to `Message` (re-exported from core).
+  Affects: `Hub.Send`, `Hub.Broadcast`, `Connection.Send`, `ConnectFunc`
+  callbacks via `WithOnMessage`.
+- Renamed `MetricsCollector.FrameDropped` to `MessageDropped`.
+  Custom `MetricsCollector` implementations must rename this method.
+- `Codec` interface method `FrameType()` renamed to `WireType()` (upstream
+  core change). Custom `Codec` implementations must rename this method.
+
 ## [0.10.0] - 2026-04-17
 
 ### Breaking changes
