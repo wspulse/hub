@@ -88,8 +88,8 @@ func TestResume_ReconnectWithinWindow(t *testing.T) {
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
 	// Verify the resumed connection is reachable.
-	frame := wspulse.Frame{Event: "after-resume", Payload: []byte(`"ok"`)}
-	require.NoError(t, srv.Send("test-connection", frame))
+	msg := wspulse.Message{Event: "after-resume", Payload: []byte(`"ok"`)}
+	require.NoError(t, srv.Send("test-connection", msg))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write to resumed connection")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -149,9 +149,9 @@ func TestResume_GraceExpires_FiresOnDisconnect(t *testing.T) {
 	requireReceive(t, disconnected)
 }
 
-// ── Resume: buffered frames delivered ───────────────────────────────────────
+// ── Resume: buffered messages delivered ─────────────────────────────────────
 
-func TestResume_BufferedFramesDelivered(t *testing.T) {
+func TestResume_BufferedMessagesDelivered(t *testing.T) {
 	t.Parallel()
 	connected := make(chan struct{}, 2)
 	dropped := make(chan struct{}, 1)
@@ -183,9 +183,9 @@ func TestResume_BufferedFramesDelivered(t *testing.T) {
 
 	connectAndDrop(t, srv, "test-connection", "test-room", connected, dropped)
 
-	// Send frames while suspended — they go to ring buffer.
+	// Send messages while suspended — they go to ring buffer.
 	for i := 0; i < 3; i++ {
-		_ = srv.Send("test-connection", wspulse.Frame{
+		_ = srv.Send("test-connection", wspulse.Message{
 			Event:   "buffered",
 			Payload: []byte(`"` + string(rune('a'+i)) + `"`),
 		})
@@ -193,17 +193,17 @@ func TestResume_BufferedFramesDelivered(t *testing.T) {
 
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
-	// Read all 3 buffered frames.
-	var frames []wspulse.Frame
+	// Read all 3 buffered messages.
+	var messages []wspulse.Message
 	for i := 0; i < 3; i++ {
 		w, ok := mt2.WaitWrite(time.Second)
-		require.True(t, ok, "expected buffered frame %d", i)
+		require.True(t, ok, "expected buffered message %d", i)
 		f, err := wspulse.JSONCodec.Decode(w.data)
 		require.NoError(t, err)
-		frames = append(frames, f)
+		messages = append(messages, f)
 	}
-	require.Len(t, frames, 3)
-	for _, f := range frames {
+	require.Len(t, messages, 3)
+	for _, f := range messages {
 		assert.Equal(t, "buffered", f.Event)
 	}
 }
@@ -353,14 +353,14 @@ func TestResume_BroadcastWhileSuspended(t *testing.T) {
 
 	connectAndDrop(t, srv, "test-connection", "test-room", connected, dropped)
 
-	// Broadcast while suspended — frames go to ring buffer.
-	require.NoError(t, srv.Broadcast("test-room", wspulse.Frame{Event: "suspended-broadcast"}))
+	// Broadcast while suspended — messages go to ring buffer.
+	require.NoError(t, srv.Broadcast("test-room", wspulse.Message{Event: "suspended-broadcast"}))
 
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
 	// Buffered broadcast should be delivered.
 	w, ok := mt2.WaitWrite(time.Second)
-	require.True(t, ok, "expected buffered broadcast frame")
+	require.True(t, ok, "expected buffered broadcast message")
 	f, err := wspulse.JSONCodec.Decode(w.data)
 	require.NoError(t, err)
 	assert.Equal(t, "suspended-broadcast", f.Event)
@@ -605,7 +605,7 @@ func TestResume_ConcurrentBroadcastDuringResume_NoRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 50; j++ {
-				_ = srv.Broadcast("test-room", wspulse.Frame{Event: "ping"})
+				_ = srv.Broadcast("test-room", wspulse.Message{Event: "ping"})
 			}
 		}()
 	}
@@ -671,7 +671,7 @@ func TestResume_StaleClosedSession_Reconnect(t *testing.T) {
 	mt2 := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Verify the new connection works.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "alive"}))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write to new connection")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -896,7 +896,7 @@ func TestResume_WritePumpStopsOnContextCancellation(t *testing.T) {
 	mt1 := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Send data before closing to ensure writePump is active.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "pre-suspend"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "pre-suspend"}))
 	w, ok := mt1.WaitWrite(time.Second)
 	require.True(t, ok, "expected pre-suspend write")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -911,7 +911,7 @@ func TestResume_WritePumpStopsOnContextCancellation(t *testing.T) {
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
 	// If old writePump didn't exit via context cancellation, the new pump wouldn't start.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "post-resume"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "post-resume"}))
 	w2, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected post-resume write")
 	f2, err := wspulse.JSONCodec.Decode(w2.data)
@@ -963,7 +963,7 @@ func TestResume_WritePumpExitsViaContextCancellation(t *testing.T) {
 	// Reconnect to prove the old writePump has exited correctly.
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "verify"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "verify"}))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected verify write")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -1021,7 +1021,7 @@ func TestResume_ConnectionCloseWhileSuspended_ThenReconnect(t *testing.T) {
 	mt2 := injectAndWait(t, srv, "test-connection", "test-room", connected)
 
 	// Verify new session works.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "after-stale"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "after-stale"}))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write to new connection")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -1080,7 +1080,7 @@ func TestResume_StaleClosedSession_OnDisconnectFires(t *testing.T) {
 	requireReceive(t, disconnected)
 
 	// Verify new session works.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}))
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "alive"}))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write to new connection")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -1130,11 +1130,11 @@ func TestResume_DrainBufferFull(t *testing.T) {
 
 	connectAndDrop(t, srv, "test-connection", "test-room", connected, dropped)
 
-	// Send multiple frames while suspended — they go to the resume buffer.
-	// With send buffer size 1, draining 3 frames overflows the send channel
+	// Send multiple messages while suspended — they go to the resume buffer.
+	// With send buffer size 1, draining 3 messages overflows the send channel
 	// and triggers the drop-oldest backpressure in the drain loop.
 	for i := 0; i < 3; i++ {
-		_ = srv.Send("test-connection", wspulse.Frame{
+		_ = srv.Send("test-connection", wspulse.Message{
 			Event:   "buffered",
 			Payload: []byte(`"` + string(rune('a'+i)) + `"`),
 		})
@@ -1143,9 +1143,9 @@ func TestResume_DrainBufferFull(t *testing.T) {
 	// Reconnect — the transition goroutine drains the resume buffer.
 	mt2 := reconnect(t, srv, "test-connection", "test-room", restored)
 
-	// Read at least one frame to verify the session is functional.
+	// Read at least one message to verify the session is functional.
 	w, ok := mt2.WaitWrite(time.Second)
-	require.True(t, ok, "expected at least one buffered frame")
+	require.True(t, ok, "expected at least one buffered message")
 	f, err := wspulse.JSONCodec.Decode(w.data)
 	require.NoError(t, err)
 	assert.Equal(t, "buffered", f.Event)
@@ -1534,9 +1534,9 @@ func TestResume_GraceTimerFiresAfterReconnect(t *testing.T) {
 	// so handleGraceExpired should skip it.
 	fc.Fire(0)
 
-	// Verify session is still alive by round-tripping a frame.
-	frame := wspulse.Frame{Event: "still-alive", Payload: []byte(`"ok"`)}
-	require.NoError(t, srv.Send("test-connection", frame))
+	// Verify session is still alive by round-tripping a message.
+	msg := wspulse.Message{Event: "still-alive", Payload: []byte(`"ok"`)}
+	require.NoError(t, srv.Send("test-connection", msg))
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write after grace timer expired")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -1606,8 +1606,8 @@ func TestResume_StaleGraceTimer(t *testing.T) {
 	fc.Fire(0)
 	fc.Fire(1)
 
-	// Verify session is still alive by round-tripping a frame.
-	require.NoError(t, srv.Send("test-connection", wspulse.Frame{Event: "alive"}))
+	// Verify session is still alive by round-tripping a message.
+	require.NoError(t, srv.Send("test-connection", wspulse.Message{Event: "alive"}))
 	w, ok := mt3.WaitWrite(time.Second)
 	require.True(t, ok, "expected write after stale timers")
 	f, err := wspulse.JSONCodec.Decode(w.data)
@@ -1760,7 +1760,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 		wspulse.WithOnTransportRestore(func(_ wspulse.Connection) {
 			events <- "restore"
 		}),
-		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Frame) {
+		wspulse.WithOnMessage(func(_ wspulse.Connection, _ wspulse.Message) {
 			events <- "message"
 		}),
 	)
@@ -1777,7 +1777,7 @@ func TestOnTransportRestore_ThenOnMessage(t *testing.T) {
 	require.Equal(t, "restore", e, "first event after reconnect")
 
 	// Now send a message on the new transport.
-	encoded, err := wspulse.JSONCodec.Encode(wspulse.Frame{Event: "ping"})
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Message{Event: "ping"})
 	require.NoError(t, err)
 	mt2.InjectMessage(wspulse.TextMessage, encoded)
 
@@ -1808,10 +1808,10 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 			}
 		}),
 		wspulse.WithOnTransportRestore(func(c wspulse.Connection) {
-			// Send a frame from within the callback. If this fires
-			// before stateConnected, the frame goes to the resume
+			// Send a message from within the callback. If this fires
+			// before stateConnected, the message goes to the resume
 			// buffer (already drained) and never reaches the client.
-			_ = c.Send(wspulse.Frame{
+			_ = c.Send(wspulse.Message{
 				Event:   "from-restore",
 				Payload: []byte(`"hello"`),
 			})
@@ -1825,7 +1825,7 @@ func TestOnTransportRestore_FiresAfterStateConnected(t *testing.T) {
 	mt2 := newMockTransport()
 	wspulse.InjectTransport(srv, "test-connection", "test-room", mt2)
 
-	// The client must receive the frame sent from OnTransportRestore.
+	// The client must receive the message sent from OnTransportRestore.
 	w, ok := mt2.WaitWrite(time.Second)
 	require.True(t, ok, "expected write from OnTransportRestore callback")
 	f, err := wspulse.JSONCodec.Decode(w.data)

@@ -2,13 +2,13 @@ package wspulse
 
 import core "github.com/wspulse/core"
 
-// Frame is the minimal transport unit for WebSocket communication.
-type Frame = core.Frame
+// Message is the minimal transport unit for WebSocket communication.
+type Message = core.Message
 
-// Codec encodes and decodes Frames for transmission.
+// Codec encodes and decodes Messages for transmission.
 type Codec = core.Codec
 
-// JSONCodec is the default Codec. Frames are encoded as JSON text frames.
+// JSONCodec is the default Codec. Messages are encoded as JSON text frames.
 var JSONCodec = core.JSONCodec
 
 // WebSocket message type constants.

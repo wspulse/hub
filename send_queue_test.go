@@ -264,7 +264,7 @@ func TestSendQueue_F1_ConcurrentEnqueueNoRace(t *testing.T) {
 
 // TestSendQueue_F2_DropOldestIsAtomic is the critical regression test for
 // hub#44: verifies that drop-oldest enqueue in a concurrent scenario never
-// loses the newest frame. With the old three-select channel approach this
+// loses the newest message. With the old three-select channel approach this
 // test was intermittently flaky under -race.
 func TestSendQueue_F2_DropOldestIsAtomic(t *testing.T) {
 	t.Parallel()
@@ -312,7 +312,7 @@ func TestSendQueue_F2_DropOldestIsAtomic(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, newestFound, "newest frame must not be silently dropped")
+		assert.True(t, newestFound, "newest message must not be silently dropped")
 		assert.LessOrEqual(t, q.Len(), bufSize, "buffer must not exceed capacity")
 	}
 }
