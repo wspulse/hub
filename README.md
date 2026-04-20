@@ -201,7 +201,7 @@ The router from [wspulse/core](https://github.com/wspulse/core) integrates direc
 }
 ```
 
-The value of `"event"` is `msg.Event` on the Go side, and is the key used to select the handler.
+The value of `"event"` is `Message.Event` on the Go side, and is the key used to select the handler.
 
 ```go
 import (
