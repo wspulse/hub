@@ -228,7 +228,7 @@ WS1 connection drops
 WS2 client reconnects with same connectionID
   → WS2 sends register(connectionID, transport) to Heart
   → Heart cancels timer
-  → Heart attaches WS2, drains ringBuffer to send channel
+  → Heart attaches WS2, drains ringBuffer to send queue
   → Heart starts readPump(WS2) + writePump(WS2) + pingPump(WS2)
   → onTransportRestore fires; no onConnect / onDisconnect fired
 ```

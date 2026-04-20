@@ -102,7 +102,7 @@ type MetricsCollector interface {
 	MessageDropped(roomID, connectionID string)
 
 	// SendBufferUtilization is called in the writePump after every successful
-	// write. used and capacity report the current send channel occupancy.
+	// write. used and capacity report the current send queue occupancy.
 	//
 	// This method is called once per message write. For high-throughput
 	// connections (e.g. 10k msg/s), expect the same call rate per connection.
