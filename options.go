@@ -170,7 +170,7 @@ func WithMaxMessageSize(n int64) HubOption {
 	return func(c *hubConfig) { c.maxMessageSize = n }
 }
 
-// WithSendBufferSize sets the per-connection outbound channel capacity (number of messages).
+// WithSendBufferSize sets the per-connection outbound send buffer capacity (number of messages).
 // n must be in [1, 4096].
 func WithSendBufferSize(n int) HubOption {
 	if n < 1 {
