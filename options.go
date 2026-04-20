@@ -10,10 +10,10 @@ import (
 
 // Configuration upper bounds — option functions panic if these ceilings are exceeded.
 const (
-	maxPingInterval  = 1 * time.Minute  // WithPingInterval upper bound
-	maxWriteTimeout  = 30 * time.Second // WithWriteTimeout upper bound
-	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
-	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
+	maxPingInterval    = 1 * time.Minute  // WithPingInterval upper bound
+	maxWriteTimeout    = 30 * time.Second // WithWriteTimeout upper bound
+	maxMsgSizeBytes    = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
+	maxSendBufMessages = 4096             // WithSendBufferSize upper bound
 )
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
@@ -176,8 +176,8 @@ func WithSendBufferSize(n int) HubOption {
 	if n < 1 {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
 	}
-	if n > maxSendBufFrames {
-		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufFrames))
+	if n > maxSendBufMessages {
+		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufMessages))
 	}
 	return func(c *hubConfig) { c.sendBufferSize = n }
 }
