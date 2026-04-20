@@ -1131,7 +1131,7 @@ func TestResume_DrainBufferFull(t *testing.T) {
 	connectAndDrop(t, srv, "test-connection", "test-room", connected, dropped)
 
 	// Send multiple messages while suspended — they go to the resume buffer.
-	// With send buffer size 1, draining 3 messages overflows the send channel
+	// With send buffer size 1, draining 3 messages overflows the send buffer
 	// and triggers the drop-oldest backpressure in the drain loop.
 	for i := 0; i < 3; i++ {
 		_ = srv.Send("test-connection", wspulse.Message{

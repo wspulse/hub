@@ -242,11 +242,11 @@ connection.
 During the suspended state, messages sent via `session.Send()` or
 `Hub.Broadcast()` are stored in an in-memory `ringBuffer` with a capacity
 equal to `sendBufferSize` (default 256 messages). When the buffer is full, the
-oldest message is dropped (same backpressure strategy as the send channel during
+oldest message is dropped (same backpressure strategy as the send queue during
 normal operation).
 
 On reconnect, buffered messages are drained from the ring buffer into the send
-channel before the new `writePump` starts, ensuring ordering is preserved.
+queue before the new `writePump` starts, ensuring ordering is preserved.
 
 ### Effective Reconnect Window
 
