@@ -7,12 +7,12 @@ import (
 	"github.com/wspulse/hub/ring"
 )
 
-// sendQueue is a concurrent, fixed-capacity FIFO queue for outbound frames.
+// sendQueue is a concurrent, fixed-capacity FIFO queue for outbound messages.
 // It wraps a ring.Buffer[[]byte] with a mutex and condition variable
 // to provide a blocking Pop and two enqueue strategies:
 //
 //   - Enqueue: rejects when full (used by session.Send — caller should know)
-//   - ForceEnqueue: evicts the oldest frame when full (used by Broadcast)
+//   - ForceEnqueue: evicts the oldest message when full (used by Broadcast)
 //
 // This eliminates the TOCTOU race present in the previous three-select
 // drop-oldest pattern on session.send chan []byte.
@@ -103,7 +103,7 @@ func (q *sendQueue) Pop(ctx context.Context) ([]byte, error) {
 }
 
 // Drain removes and returns all items in FIFO order without blocking.
-// Used by the resume transition goroutine to transfer buffered frames into
+// Used by the resume transition goroutine to transfer buffered messages into
 // the new session's outbound send queue before its writePump starts.
 //
 // Must not be called concurrently with Pop.

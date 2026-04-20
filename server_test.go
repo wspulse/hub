@@ -25,7 +25,7 @@ func TestHub_Send_ErrConnectionNotFound(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
-	err := srv.Send("does-not-exist", wspulse.Frame{Event: "ping"})
+	err := srv.Send("does-not-exist", wspulse.Message{Event: "ping"})
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
@@ -170,7 +170,7 @@ func TestHub_Broadcast_EmptyRoom_NoError(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	t.Cleanup(srv.Close)
-	err := srv.Broadcast("nonexistent-room", wspulse.Frame{Event: "msg"})
+	err := srv.Broadcast("nonexistent-room", wspulse.Message{Event: "msg"})
 	require.NoError(t, err)
 }
 
@@ -190,7 +190,7 @@ func TestHub_Send_AfterClose_ReturnsErrConnectionNotFound(t *testing.T) {
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
 	// After close, hub maps are empty — returns ErrConnectionNotFound.
-	err := srv.Send("any", wspulse.Frame{Event: "x"})
+	err := srv.Send("any", wspulse.Message{Event: "x"})
 	require.ErrorIs(t, err, wspulse.ErrConnectionNotFound)
 }
 
@@ -200,7 +200,7 @@ func TestHub_Broadcast_AfterClose(t *testing.T) {
 	t.Parallel()
 	srv := wspulse.NewHub(acceptAll)
 	srv.Close()
-	err := srv.Broadcast("test-room", wspulse.Frame{Event: "hello"})
+	err := srv.Broadcast("test-room", wspulse.Message{Event: "hello"})
 	require.ErrorIs(t, err, wspulse.ErrHubClosed)
 }
 

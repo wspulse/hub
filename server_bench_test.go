@@ -86,11 +86,11 @@ func benchBroadcast(b *testing.B, roomSize int) {
 		}
 	}
 
-	frame := wspulse.Frame{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := srv.Broadcast("bench-room", frame); err != nil {
+		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast: %v", err)
 		}
 	}
@@ -142,14 +142,14 @@ func BenchmarkSend(b *testing.B) {
 		}
 	}()
 
-	frame := wspulse.Frame{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// ErrSendBufferFull is expected at benchmark speed — the drain
 		// goroutine cannot keep up with the enqueue rate. The benchmark
 		// measures raw encode+enqueue cost including both paths.
-		_ = conn.Send(frame)
+		_ = conn.Send(msg)
 	}
 }
 
@@ -192,15 +192,15 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	// Do NOT drain — let buffer fill so broadcast hits drop-oldest path.
 	// Pre-fill the send buffer via direct Send (bypasses hub, synchronous
 	// enqueue) to avoid a racy sleep.
-	frame := wspulse.Frame{Event: "bench", Payload: []byte(`{"v":1}`)}
-	if err := conn.Send(frame); err != nil {
+	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
+	if err := conn.Send(msg); err != nil {
 		b.Fatalf("prefill Send failed: %v", err)
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := srv.Broadcast("bench-room", frame); err != nil {
+		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast failed: %v", err)
 		}
 	}

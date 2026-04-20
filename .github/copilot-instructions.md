@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/hub`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Frame`, `Codec`).
+wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. It manages concurrent connections, room-based broadcasting, session resumption, and heartbeat. Module path: `github.com/wspulse/hub`. Package name: `wspulse`. Depends on `github.com/wspulse/core` for shared types (`Message`, `Codec`).
 
 ## Architecture
 
@@ -10,7 +10,7 @@ wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. 
 - **`heart.go`** — Central single-threaded event loop. Manages all sessions and routes messages via channels. No `net/http` imports.
 - **`session.go`** — `Connection` interface and the unexported `session` struct. Per-connection `readPump` + `writePump` goroutine pair; ping/pong heartbeat; backpressure drop.
 - **`options.go`** — `HubOption` functional options, `ConnectFunc` type, and all `WithXxx` option builders.
-- **`resume.go`** — Ring buffer for buffering frames during temporary disconnects (session resumption).
+- **`resume.go`** — Ring buffer for buffering messages during temporary disconnects (session resumption).
 - **`errors.go`** — Hub-only sentinel errors: `ErrConnectionNotFound`, `ErrDuplicateConnectionID`, `ErrHubClosed`.
 - **`doc/internals.md`** — Internal architecture documentation.
 - Wire protocol specification has moved to the [`.github` repo](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
@@ -50,7 +50,7 @@ make tidy             # tidy module dependencies
 - **Tests**: co-located with source (`_test.go`). Cover happy path and at least one error path. Required for new public functions.
   - **Component tests**: tests use mock transports (`mockTransport`) via `InjectTransport` — no real WebSocket connections needed. All tests run with `make test`.
   - **Test-first for bug fixes**: **mandatory** — see Critical Rule 7 for the required step-by-step procedure. Do not touch production code without a prior failing test.
-  - **Benchmarks**: changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Verify with `make bench`.
+  - **Benchmarks**: changes to ring buffer, broadcast fan-out, or message encoding must include a benchmark. Verify with `make bench`.
 - **API compatibility**:
   - Exported symbols are a public contract. Changing or removing any exported identifier is a breaking change requiring a major version bump.
   - Adding a method to an exported interface breaks all external implementations — treat it as a breaking change.

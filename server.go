@@ -14,12 +14,12 @@ import (
 type Hub interface {
 	http.Handler
 
-	// Send enqueues a Frame for the connection identified by connectionID.
+	// Send enqueues a Message for the connection identified by connectionID.
 	// Returns ErrConnectionNotFound if connectionID has no active connection.
-	Send(connectionID string, f Frame) error
+	Send(connectionID string, m Message) error
 
-	// Broadcast enqueues a Frame for every active connection in roomID.
-	Broadcast(roomID string, f Frame) error
+	// Broadcast enqueues a Message for every active connection in roomID.
+	Broadcast(roomID string, m Message) error
 
 	// Kick forcefully closes the connection identified by connectionID.
 	// Kick always bypasses the resume window — the session is destroyed
@@ -155,24 +155,24 @@ func (s *internalHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Send enqueues a Frame for the connection identified by connectionID.
-func (s *internalHub) Send(connectionID string, f Frame) error {
+// Send enqueues a Message for the connection identified by connectionID.
+func (s *internalHub) Send(connectionID string, m Message) error {
 	target := s.heart.get(connectionID)
 	if target == nil {
 		return ErrConnectionNotFound
 	}
-	return target.Send(f)
+	return target.Send(m)
 }
 
-// Broadcast enqueues a Frame for every active connection in roomID.
-func (s *internalHub) Broadcast(roomID string, f Frame) error {
+// Broadcast enqueues a Message for every active connection in roomID.
+func (s *internalHub) Broadcast(roomID string, m Message) error {
 	select {
 	case <-s.heart.done:
 		return ErrHubClosed
 	default:
 	}
 
-	data, err := s.config.codec.Encode(f)
+	data, err := s.config.codec.Encode(m)
 	if err != nil {
 		s.config.logger.Warn("wspulse: broadcast encode failed",
 			zap.String("room_id", roomID),

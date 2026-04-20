@@ -65,7 +65,7 @@ wspulse/hub follows semantic versioning. Any change that removes, renames, or al
 
 ## Performance-Sensitive Changes
 
-Changes to ring buffer, broadcast fan-out, or frame encoding must include a benchmark. Run `make bench` and include before/after numbers in the PR description.
+Changes to ring buffer, broadcast fan-out, or message encoding must include a benchmark. Run `make bench` and include before/after numbers in the PR description.
 
 ## Pull Request Guidelines
 

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-20
+
+### Breaking changes
+
+- Renamed `Frame` type alias to `Message` (re-exported from core).
+  Affects: `Hub.Send`, `Hub.Broadcast`, `Connection.Send`,
+  `WithOnMessage` callback signature.
+- Renamed `MetricsCollector.FrameDropped` to `MessageDropped`.
+  Custom `MetricsCollector` implementations must rename this method.
+- `Codec` interface method `FrameType()` renamed to `WireType()` (upstream
+  core change). Custom `Codec` implementations must rename this method.
+
 ## [0.10.0] - 2026-04-17
 
 ### Breaking changes
@@ -190,7 +202,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/wspulse/hub/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/wspulse/hub/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/wspulse/hub/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/wspulse/hub/compare/v0.9.1...v0.9.2

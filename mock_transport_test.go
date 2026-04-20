@@ -18,7 +18,7 @@ import (
 // function. This ensures tests never depend on real timeouts.
 type mockTransport struct {
 	readCh    chan readResult // test → readPump: inject messages or errors
-	writeCh   chan writeCall  // writePump → test: capture outbound frames
+	writeCh   chan writeCall  // writePump → test: capture outbound messages
 	closeCh   chan struct{}   // closed once on Close() or CloseNow()
 	closeOnce sync.Once
 

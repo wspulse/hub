@@ -10,10 +10,10 @@ import (
 
 // Configuration upper bounds — option functions panic if these ceilings are exceeded.
 const (
-	maxPingInterval  = 1 * time.Minute  // WithPingInterval upper bound
-	maxWriteTimeout  = 30 * time.Second // WithWriteTimeout upper bound
-	maxMsgSizeBytes  = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
-	maxSendBufFrames = 4096             // WithSendBufferSize upper bound
+	maxPingInterval    = 1 * time.Minute  // WithPingInterval upper bound
+	maxWriteTimeout    = 30 * time.Second // WithWriteTimeout upper bound
+	maxMsgSizeBytes    = 64 << 20         // WithMaxMessageSize upper bound — 64 MiB
+	maxSendBufMessages = 4096             // WithSendBufferSize upper bound
 )
 
 // ConnectFunc authenticates an incoming HTTP upgrade request and provides the
@@ -36,7 +36,7 @@ type HubOption func(*hubConfig) //nolint:revive
 type hubConfig struct {
 	connect            ConnectFunc
 	onConnect          func(Connection)
-	onMessage          func(Connection, Frame)
+	onMessage          func(Connection, Message)
 	onDisconnect       func(Connection, error)
 	onTransportDrop    func(Connection, error)
 	onTransportRestore func(Connection)
@@ -72,7 +72,7 @@ func WithOnConnect(fn func(Connection)) HubOption {
 	return func(c *hubConfig) { c.onConnect = fn }
 }
 
-// WithOnMessage registers a callback invoked for every inbound Frame received from
+// WithOnMessage registers a callback invoked for every inbound Message received from
 // a connected client. The callback is called from the connection's readPump goroutine
 // and must return quickly; use a goroutine for heavy work.
 //
@@ -80,7 +80,7 @@ func WithOnConnect(fn func(Connection)) HubOption {
 // On resume, the new readPump starts only after the old one has fully exited.
 // Handlers should still be safe for concurrent use when application code
 // accesses Connection from other goroutines (e.g. Send from an HTTP handler).
-func WithOnMessage(fn func(Connection, Frame)) HubOption {
+func WithOnMessage(fn func(Connection, Message)) HubOption {
 	return func(c *hubConfig) { c.onMessage = fn }
 }
 
@@ -116,7 +116,7 @@ func WithOnTransportDrop(fn func(Connection, error)) HubOption {
 // resume window.
 //
 // When this fires, OnConnect and OnDisconnect are NOT called — the session
-// continues as if the transport had never dropped. Buffered frames are replayed
+// continues as if the transport had never dropped. Buffered messages are replayed
 // to the new transport before the callback is invoked.
 //
 // This callback does NOT fire when:
@@ -170,14 +170,14 @@ func WithMaxMessageSize(n int64) HubOption {
 	return func(c *hubConfig) { c.maxMessageSize = n }
 }
 
-// WithSendBufferSize sets the per-connection outbound channel capacity (number of frames).
+// WithSendBufferSize sets the per-connection outbound send buffer capacity (number of messages).
 // n must be in [1, 4096].
 func WithSendBufferSize(n int) HubOption {
 	if n < 1 {
 		panic("wspulse: WithSendBufferSize: n must be at least 1")
 	}
-	if n > maxSendBufFrames {
-		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufFrames))
+	if n > maxSendBufMessages {
+		panic(fmt.Sprintf("wspulse: WithSendBufferSize: n exceeds maximum (%d)", maxSendBufMessages))
 	}
 	return func(c *hubConfig) { c.sendBufferSize = n }
 }
