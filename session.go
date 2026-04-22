@@ -10,8 +10,9 @@ import (
 	"github.com/coder/websocket"
 	"go.uber.org/zap"
 
+	"github.com/maxence2997/carousel"
+
 	core "github.com/wspulse/core"
-	"github.com/wspulse/hub/ring"
 )
 
 // Connection represents a logical WebSocket session managed by the Hub.
@@ -67,17 +68,17 @@ const (
 type session struct {
 	id     string
 	roomID string
-	send   *sendQueue    // outbound message queue; shared across reconnects
-	done   chan struct{} // closed once to signal session termination; guarded by closeOnce
+	send   *carousel.RingQueue[[]byte] // outbound message queue; shared across reconnects
+	done   chan struct{}               // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex           // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
-	transport    transport            // current physical connection; nil when suspended
-	pumpCancel   context.CancelFunc   // cancels the current pump context
-	pumpDone     chan struct{}        // closed by writePump on exit
-	graceTimer   *time.Timer          // resume window timer; nil when not suspended
-	state        sessionState         // current lifecycle state
-	resumeBuffer *ring.Buffer[[]byte] // nil when resume is disabled
-	suspendEpoch uint64               // monotonically increases on each detachWS; stale grace timers compare this
+	mu           sync.Mutex                   // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	transport    transport                    // current physical connection; nil when suspended
+	pumpCancel   context.CancelFunc           // cancels the current pump context
+	pumpDone     chan struct{}                // closed by writePump on exit
+	graceTimer   *time.Timer                  // resume window timer; nil when not suspended
+	state        sessionState                 // current lifecycle state
+	resumeBuffer *carousel.RingBuffer[[]byte] // nil when resume is disabled
+	suspendEpoch uint64                       // monotonically increases on each detachWS; stale grace timers compare this
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -94,8 +95,8 @@ func (s *session) Done() <-chan struct{} { return s.done }
 // to the resume ring buffer instead of the outbound send queue.
 //
 // The select is a fast-path optimisation: skip encoding when the session is
-// already closed. The authoritative closed check is sendQueue.Enqueue, which
-// inspects q.closed under the queue mutex.
+// already closed. The authoritative closed check is s.send.Enqueue, which
+// returns carousel.ErrClosed under the queue mutex.
 func (s *session) Send(m Message) error {
 	// Fast path: bail early if the session is already closed.
 	select {
@@ -155,11 +156,15 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 	}
 
 	err := s.send.Enqueue(data)
-	if err == ErrSendBufferFull {
+	if errors.Is(err, carousel.ErrFull) {
 		s.config.logger.Debug("wspulse: send buffer full, dropping message",
 			zap.String("conn_id", s.id),
 		)
 		s.config.metrics.MessageDropped(s.roomID, s.id)
+		return ErrSendBufferFull
+	}
+	if errors.Is(err, carousel.ErrClosed) {
+		return ErrConnectionClosed
 	}
 	return err
 }
@@ -556,7 +561,7 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 
 		data, err := s.send.Pop(ctx)
 		if err != nil {
-			if errors.Is(err, ErrConnectionClosed) {
+			if errors.Is(err, carousel.ErrClosed) {
 				s.config.logger.Debug("wspulse: writePump stopping: send queue closed",
 					zap.String("conn_id", s.id))
 			} else {
