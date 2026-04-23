@@ -95,8 +95,8 @@ func (s *session) Done() <-chan struct{} { return s.done }
 // to the resume ring buffer instead of the outbound send queue.
 //
 // The select is a fast-path optimisation: skip encoding when the session is
-// already closed. The authoritative closed check is s.send.Enqueue, which
-// returns carousel.ErrClosed under the queue mutex.
+// already closed. If the session closes in the window between this check and
+// enqueue, enqueue will return ErrConnectionClosed.
 func (s *session) Send(m Message) error {
 	// Fast path: bail early if the session is already closed.
 	select {
