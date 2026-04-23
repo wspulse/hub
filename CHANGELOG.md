@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Internal
+
+- Replaced internal `ring/` package and `sendQueue` type with
+  `github.com/maxence2997/carousel` v1.0.0. No public API changes.
+  `github.com/wspulse/hub/ring` was not a documented or supported import path;
+  any direct use of that package must migrate to `github.com/maxence2997/carousel`.
+
 ## [0.11.0] - 2026-04-20
 
 ### Breaking changes

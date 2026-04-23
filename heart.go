@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/wspulse/hub/ring"
+	"github.com/maxence2997/carousel"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -172,14 +172,14 @@ func (h *heart) handleRegister(message registerMessage) {
 	newSession := &session{
 		id:          message.connectionID,
 		roomID:      message.roomID,
-		send:        newSendQueue(h.config.sendBufferSize),
+		send:        carousel.NewRingQueue[[]byte](h.config.sendBufferSize),
 		done:        make(chan struct{}),
 		state:       stateConnected,
 		connectedAt: time.Now(),
 		config:      h.config,
 	}
 	if h.config.resumeWindow > 0 {
-		newSession.resumeBuffer = ring.New[[]byte](h.config.sendBufferSize)
+		newSession.resumeBuffer = carousel.NewRingBuffer[[]byte](h.config.sendBufferSize)
 	}
 
 	var roomCreated bool
