@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/google/uuid v1.6.0
-	github.com/maxence2997/carousel v0.1.0
+	github.com/maxence2997/carousel v1.0.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wspulse/core v0.6.0
 	go.uber.org/goleak v1.3.0
