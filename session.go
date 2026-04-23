@@ -143,6 +143,9 @@ func (s *session) enqueue(data []byte, dropOldest bool) error {
 
 	if dropOldest {
 		evicted, err := s.send.ForceEnqueue(data)
+		if errors.Is(err, carousel.ErrClosed) {
+			return ErrConnectionClosed
+		}
 		if err != nil {
 			return err
 		}
