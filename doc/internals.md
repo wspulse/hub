@@ -60,10 +60,10 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
 - `session.done` is a `chan struct{}` closed exactly once (via `closeOnce`) by
   `session.Close()`. The bridge goroutine translates this into `pumpCancel()`
   so all pumps exit via context cancellation.
-- `session.send` is a `*sendQueue` (mutex-guarded `ring.Buffer` + `sync.Cond`)
-  shared across reconnects for the lifetime of the session. It is closed by
+- `session.send` is a `*carousel.RingQueue[[]byte]` — a concurrent blocking FIFO
+  queue shared across reconnects for the lifetime of the session. It is closed by
   `session.Close()` after `done` is closed, which unblocks any goroutine
-  blocked in `sendQueue.Pop`. This eliminates the TOCTOU race present in the
+  blocked in `RingQueue.Pop`. This eliminates the TOCTOU race present in the
   previous three-select drop-oldest pattern.
 - `writePump` calls `s.send.Pop(pumpCtx)`, which blocks until a message is
   available, the context is cancelled, or the queue is closed.
@@ -126,18 +126,18 @@ wspulse.NewHub(connect,
 
 ## 3. Backpressure and Send Buffer
 
-Each session maintains a `session.send *sendQueue` — a mutex-guarded
-`ring.Buffer[[]byte]` with a `sync.Cond` for blocking `Pop`. Its capacity
-is configurable (default **256**). When `Hub.Broadcast` or `Hub.Send` is called:
+Each session maintains a `session.send *carousel.RingQueue[[]byte]` — a concurrent
+blocking FIFO queue backed by a ring buffer. Its capacity is configurable (default
+**256**). When `Hub.Broadcast` or `Hub.Send` is called:
 
-1. The encoded message bytes are passed to `sendQueue.Enqueue` or
-   `sendQueue.ForceEnqueue` (both hold the mutex for the entire operation).
+1. The encoded message bytes are passed to `RingQueue.Enqueue` or
+   `RingQueue.ForceEnqueue` (both acquire the internal mutex for the entire operation).
 2. If the buffer is **full**, `ErrSendBufferFull` is returned to the caller
    (for direct `Send`, via `Enqueue`) or **drop-oldest** backpressure is applied
    atomically (for `Broadcast`, via `ForceEnqueue`): the oldest message is evicted
    and the new message is inserted in a single critical section — no TOCTOU race.
 3. When `resumeWindow > 0` and the session is suspended (no active WebSocket),
-   messages are buffered to an in-memory `ring.Buffer` instead of the send queue.
+   messages are buffered to an in-memory ring buffer instead of the send queue.
    These messages are replayed when the client reconnects.
 
 This ensures a slow or lagging connection cannot block the heart event loop or
