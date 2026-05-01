@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-05-01
+
+### Internal
+
+- Replaced internal `ring/` package and `sendQueue` type with
+  `github.com/maxence2997/carousel` v1.0.4. No public API changes.
+  `github.com/wspulse/hub/ring` was not a documented or supported import path;
+  any direct use of that package must migrate to `github.com/maxence2997/carousel`.
+  v1.0.4 over v1.0.0 brings internal-only optimisations: faster `RingBuffer`
+  `Drain`/`Clear` (uses `copy`+`clear` builtins) and a `RingQueue.Pop` fast
+  path that avoids the `context.AfterFunc` allocation when an item is already
+  available.
+
 ## [0.11.0] - 2026-04-20
 
 ### Breaking changes
@@ -202,7 +215,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/wspulse/hub/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wspulse/hub/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/wspulse/hub/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/wspulse/hub/compare/v0.9.2...v0.9.3
