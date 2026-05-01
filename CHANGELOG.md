@@ -5,9 +5,13 @@
 ### Internal
 
 - Replaced internal `ring/` package and `sendQueue` type with
-  `github.com/maxence2997/carousel` v1.0.0. No public API changes.
+  `github.com/maxence2997/carousel` v1.0.4. No public API changes.
   `github.com/wspulse/hub/ring` was not a documented or supported import path;
   any direct use of that package must migrate to `github.com/maxence2997/carousel`.
+  v1.0.4 over v1.0.0 brings internal-only optimisations: faster `RingBuffer`
+  `Drain`/`Clear` (uses `copy`+`clear` builtins) and a `RingQueue.Pop` fast
+  path that avoids the `context.AfterFunc` allocation when an item is already
+  available.
 
 ## [0.11.0] - 2026-04-20
 
