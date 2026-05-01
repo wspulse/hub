@@ -306,4 +306,4 @@ yarn-error.log*
 Thumbs.db
 
 # Misc
-*.pem
+*.pem.mx/
