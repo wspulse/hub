@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-05-02
+
+### Fixed
+
+- `MessageBroadcast` metric `recipients` count and the `broadcast dispatched`
+  log line no longer overcount when a session closes between the
+  `<-target.done` soft check and the `enqueue` call. The counter now
+  increments only when `enqueue` succeeds. Operator-visible: post-upgrade,
+  recipient counts on this metric may decrease slightly compared to the
+  same workload pre-upgrade — this corrects the prior overcount, no action
+  required. (#63)
+
 ## [0.11.1] - 2026-05-01
 
 ### Internal
@@ -215,7 +227,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/wspulse/hub/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/wspulse/hub/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wspulse/hub/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/wspulse/hub/compare/v0.9.3...v0.10.0
