@@ -27,6 +27,14 @@ type mockTransport struct {
 	closed      bool
 	blockClose  bool                            // true = CloseNow / Close are no-ops
 	pingHandler func(ctx context.Context) error // nil = always succeed
+	closeCalls  []closeCall                     // recorded Close(code, reason) calls
+}
+
+// closeCall captures the arguments of one Close call so tests can assert
+// on the close frame the writePump emits.
+type closeCall struct {
+	code   core.StatusCode
+	reason string
 }
 
 type readResult struct {
@@ -110,8 +118,9 @@ func (m *mockTransport) SetReadLimit(limit int64) {
 	m.mu.Unlock()
 }
 
-func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
+func (m *mockTransport) Close(code core.StatusCode, reason string) error {
 	m.mu.Lock()
+	m.closeCalls = append(m.closeCalls, closeCall{code: code, reason: reason})
 	if m.blockClose {
 		m.mu.Unlock()
 		return nil
@@ -124,6 +133,16 @@ func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
 		close(m.closeCh)
 	})
 	return nil
+}
+
+// CloseCalls returns a copy of every Close(code, reason) call recorded so far.
+// Safe to call concurrently.
+func (m *mockTransport) CloseCalls() []closeCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]closeCall, len(m.closeCalls))
+	copy(out, m.closeCalls)
+	return out
 }
 
 func (m *mockTransport) CloseNow() error {

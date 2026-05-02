@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/maxence2997/carousel"
+
+	core "github.com/wspulse/core"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -176,7 +178,13 @@ func (h *heart) handleRegister(message registerMessage) {
 		done:        make(chan struct{}),
 		state:       stateConnected,
 		connectedAt: time.Now(),
-		config:      h.config,
+		// Default close-frame data; overridden by closeWith on heart-driven
+		// teardown paths (kick, hub shutdown, duplicate conn_id). Set
+		// explicitly so the readPump heart-shutdown safety-net path (which
+		// closes s.done directly via closeOnce without going through
+		// closeWith) still leaves writePump with a valid close code.
+		closeCode: core.StatusNormalClosure,
+		config:    h.config,
 	}
 	if h.config.resumeWindow > 0 {
 		newSession.resumeBuffer = carousel.NewRingBuffer[[]byte](h.config.sendBufferSize)
@@ -505,7 +513,9 @@ func (h *heart) shutdown() {
 		for _, target := range room {
 			target.cancelGraceTimer()
 			closedInfos = append(closedInfos, closedInfo{target.roomID, target.id, time.Since(target.connectedAt)})
-			_ = target.Close()
+			// Close with StatusGoingAway so the close frame carries
+			// "server shutting down" — RFC 6455 §7.4.1's exact use of 1001.
+			_ = target.closeWith(core.StatusGoingAway, "server shutting down")
 			disconnected = append(disconnected, target)
 		}
 		destroyedRooms = append(destroyedRooms, roomID)

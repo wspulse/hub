@@ -71,7 +71,7 @@ type session struct {
 	send   *carousel.RingQueue[[]byte] // outbound message queue; shared across reconnects
 	done   chan struct{}               // closed once to signal session termination; guarded by closeOnce
 
-	mu           sync.Mutex                   // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch
+	mu           sync.Mutex                   // guards transport, pumpCancel, pumpDone, graceTimer, state, resumeBuffer, suspendEpoch, closeCode, closeReason
 	transport    transport                    // current physical connection; nil when suspended
 	pumpCancel   context.CancelFunc           // cancels the current pump context
 	pumpDone     chan struct{}                // closed by writePump on exit
@@ -79,6 +79,8 @@ type session struct {
 	state        sessionState                 // current lifecycle state
 	resumeBuffer *carousel.RingBuffer[[]byte] // nil when resume is disabled
 	suspendEpoch uint64                       // monotonically increases on each detachWS; stale grace timers compare this
+	closeCode    core.StatusCode              // close-frame status code writePump emits on session shutdown; default StatusNormalClosure
+	closeReason  string                       // close-frame reason string writePump emits on session shutdown; default ""
 
 	connectedAt time.Time // session creation time; written once, read-only thereafter
 
@@ -184,23 +186,45 @@ func (s *session) cancelGraceTimer() {
 	s.mu.Unlock()
 }
 
-// Close initiates a graceful shutdown of the session.
-// Signals writePump to send a WebSocket close frame and stop.
+// Close initiates a graceful shutdown of the session and emits a close
+// frame with (StatusNormalClosure, "") to the remote peer. This is the
+// public Connection.Close() entry point used by application code.
+//
+// Heart-driven teardown paths use closeWith directly to encode the
+// disconnect cause (e.g. kick, hub shutdown, duplicate conn_id) into the
+// close frame's reason string.
+//
 // Safe to call multiple times; only the first call has effect.
+func (s *session) Close() error {
+	return s.closeWith(core.StatusNormalClosure, "")
+}
+
+// closeWith terminates the session and instructs writePump to emit a close
+// frame carrying the supplied (code, reason). Setting the close-frame
+// fields and closing s.done happen inside the same closeOnce.Do body, so
+// writePump (which only reads these fields after observing s.done closed)
+// is guaranteed to see them.
 //
 // Ordering note: heart-driven teardown (disconnectSession) always calls
-// cancelGraceTimer via removeSession before calling Close(). By the time
-// Close() acquires the lock, graceTimer is already nil, so timer.Reset(0)
+// cancelGraceTimer via removeSession before calling closeWith. By the time
+// closeWith acquires the lock, graceTimer is already nil, so timer.Reset(0)
 // is never invoked on that path. timer.Reset(0) is only reached when the
-// application calls Close() directly on a suspended session; in that case
-// it is intentional — it signals the heart via the existing graceExpired
-// channel without requiring a separate session-to-heart channel.
-func (s *session) Close() error {
+// application calls Close() (which routes through closeWith) directly on a
+// suspended session; in that case it is intentional — it signals the heart
+// via the existing graceExpired channel without requiring a separate
+// session-to-heart channel.
+//
+// Safe to call multiple times; only the first call has effect.
+func (s *session) closeWith(code core.StatusCode, reason string) error {
 	s.closeOnce.Do(func() {
 		s.config.logger.Debug("wspulse: session closing",
 			zap.String("conn_id", s.id),
+			zap.Int("close_code", int(code)),
+			zap.String("close_reason", reason),
 		)
 		s.mu.Lock()
+		s.closeCode = code
+		s.closeReason = reason
 		s.state = stateClosed
 		timer := s.graceTimer
 		s.graceTimer = nil
@@ -211,7 +235,7 @@ func (s *session) Close() error {
 
 		if timer != nil {
 			// Reset to 0 so handleGraceExpired fires immediately.
-			// See ordering note on Close() above.
+			// See ordering note on closeWith above.
 			timer.Reset(0)
 		}
 
@@ -553,12 +577,21 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 	}()
 
 	for {
-		// Priority exit: if the context has been cancelled (reconnect swap),
-		// stop immediately to avoid consuming messages from s.send that
-		// the replacement pump should deliver.
+		// Priority exit: ctx cancelled while session is still alive
+		// (reconnect swap) — exit fast so the replacement pump owns the
+		// remaining messages in s.send. On full session shutdown (s.done
+		// closed) fall through so the err branch sends the graceful close
+		// frame; the send queue is closed in closeWith, so Pop returns
+		// promptly with ErrClosed.
 		select {
 		case <-ctx.Done():
-			return
+			select {
+			case <-s.done:
+				// Session shutting down — fall through to the standard
+				// exit path so writePump emits the configured close frame.
+			default:
+				return
+			}
 		default:
 		}
 
@@ -573,10 +606,15 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 			}
 			// Send a graceful close frame only on session shutdown (s.done
 			// closed), not on reconnect swap where speed matters and the
-			// old transport may already be dead.
+			// old transport may already be dead. closeCode/closeReason are
+			// set by closeWith before close(s.done), so the channel-receive
+			// below establishes the happens-before edge for these reads.
 			select {
 			case <-s.done:
-				_ = trans.Close(core.StatusNormalClosure, "")
+				s.mu.Lock()
+				code, reason := s.closeCode, s.closeReason
+				s.mu.Unlock()
+				_ = trans.Close(code, reason)
 			default:
 			}
 			return
