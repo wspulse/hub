@@ -12,6 +12,47 @@ import (
 
 // ── Hub shutdown close frame ────────────────────────────────────────────────
 
+// TestHub_Close_DuringBlockedWrite_StillEmitsServerShuttingDown verifies
+// the close-frame is still emitted when shutdown cancels pumpCtx while
+// writePump is blocked inside trans.Write. Real WebSocket writes can block
+// for up to writeTimeout on slow TCP, and without explicit handling in the
+// write-error path the close frame is silently dropped.
+func TestHub_Close_DuringBlockedWrite_StillEmitsServerShuttingDown(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+	)
+
+	mt := newMockTransport()
+	// Make Write block until ctx done, simulating a slow TCP write.
+	mt.SetBlockWrite(true)
+	wspulse.InjectTransport(srv, "conn-1", "room-1", mt)
+	requireReceive(t, connected)
+
+	// Push a message so writePump dequeues and enters trans.Write.
+	conns := srv.GetConnections("room-1")
+	require.Len(t, conns, 1)
+	require.NoError(t, conns[0].Send(wspulse.Message{Event: "trigger", Payload: []byte(`"x"`)}))
+
+	// Synchronise: wait until writePump is actually inside trans.Write.
+	<-mt.writeEnteredCh
+
+	// Hub shutdown — pumpCtx cancels, trans.Write returns ctx.Err().
+	// The close-frame send must still happen on the way out.
+	srv.Close()
+
+	<-mt.closeCh
+
+	calls := mt.CloseCalls()
+	require.Len(t, calls, 1, "shutdown during blocked write must still emit close frame")
+	assert.Equal(t, core.StatusGoingAway, calls[0].code)
+	assert.Equal(t, "server shutting down", calls[0].reason)
+}
+
 // TestHub_Close_EmitsServerShuttingDown verifies that when the hub shuts down,
 // each session's writePump emits a close frame with StatusGoingAway (1001) and
 // the reason "server shutting down" — distinct from the default

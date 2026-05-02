@@ -565,6 +565,30 @@ func isNormalClose(err error) bool {
 		code == websocket.StatusGoingAway
 }
 
+// emitCloseFrameOnShutdown sends the configured close frame to trans when
+// the session is shutting down (s.done closed). On reconnect-swap (ctx
+// cancelled but s.done still open) this is a no-op — the replacement pump
+// owns the connection.
+//
+// closeCode/closeReason are set inside the same closeOnce.Do body that
+// closes s.done, so observing s.done closed provides the happens-before
+// edge needed to read them safely. The s.mu acquisition mirrors closeWith's
+// write site for access-pattern consistency.
+//
+// All writePump exit paths that may run during shutdown call this helper so
+// the close frame is emitted regardless of which I/O step the pump was on
+// when shutdown fired.
+func (s *session) emitCloseFrameOnShutdown(trans transport) {
+	select {
+	case <-s.done:
+		s.mu.Lock()
+		code, reason := s.closeCode, s.closeReason
+		s.mu.Unlock()
+		_ = trans.Close(code, reason)
+	default:
+	}
+}
+
 // writePump drains the send channel on the transport. writePump is the sole
 // goroutine that writes application data to the transport. On exit it
 // force-closes the underlying connection so that readPump's Read unblocks.
@@ -604,22 +628,7 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 				s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
 					zap.String("conn_id", s.id))
 			}
-			// Send a graceful close frame only on session shutdown (s.done
-			// closed), not on reconnect swap where speed matters and the
-			// old transport may already be dead. closeCode/closeReason are
-			// set by closeWith before close(s.done), so the channel-receive
-			// already gives us the happens-before edge needed to read them
-			// safely. The s.mu acquisition below is defensive — it mirrors
-			// closeWith's write site so the access pattern stays consistent
-			// across the file.
-			select {
-			case <-s.done:
-				s.mu.Lock()
-				code, reason := s.closeCode, s.closeReason
-				s.mu.Unlock()
-				_ = trans.Close(code, reason)
-			default:
-			}
+			s.emitCloseFrameOnShutdown(trans)
 			return
 		}
 
@@ -630,6 +639,12 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 			if ctx.Err() != nil {
 				s.config.logger.Debug("wspulse: writePump stopping: context cancelled",
 					zap.String("conn_id", s.id))
+				// Mirror the Pop-err branch above: shutdown can cancel
+				// pumpCtx while we are inside trans.Write (real TCP writes
+				// can block for up to writeTimeout). Without this, hub
+				// shutdown silently drops the close frame whenever
+				// writePump happens to be mid-write.
+				s.emitCloseFrameOnShutdown(trans)
 				return
 			}
 			s.config.logger.Warn("wspulse: write failed", zap.String("conn_id", s.id), zap.Error(err))
