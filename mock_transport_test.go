@@ -17,16 +17,27 @@ import (
 // need to control ping liveness call SetPingHandler to provide a custom
 // function. This ensures tests never depend on real timeouts.
 type mockTransport struct {
-	readCh    chan readResult // test → readPump: inject messages or errors
-	writeCh   chan writeCall  // writePump → test: capture outbound messages
-	closeCh   chan struct{}   // closed once on Close() or CloseNow()
-	closeOnce sync.Once
+	readCh           chan readResult // test → readPump: inject messages or errors
+	writeCh          chan writeCall  // writePump → test: capture outbound messages
+	closeCh          chan struct{}   // closed once on Close() or CloseNow()
+	writeEnteredCh   chan struct{}   // closed the first time Write is entered
+	closeOnce        sync.Once
+	writeEnteredOnce sync.Once
 
 	mu          sync.Mutex
 	readLimit   int64
 	closed      bool
 	blockClose  bool                            // true = CloseNow / Close are no-ops
+	blockWrite  bool                            // true = Write blocks until ctx done
 	pingHandler func(ctx context.Context) error // nil = always succeed
+	closeCalls  []closeCall                     // recorded Close(code, reason) calls
+}
+
+// closeCall captures the arguments of one Close call so tests can assert
+// on the close frame the writePump emits.
+type closeCall struct {
+	code   core.StatusCode
+	reason string
 }
 
 type readResult struct {
@@ -42,9 +53,10 @@ type writeCall struct {
 
 func newMockTransport() *mockTransport {
 	return &mockTransport{
-		readCh:  make(chan readResult, 16),
-		writeCh: make(chan writeCall, 256),
-		closeCh: make(chan struct{}),
+		readCh:         make(chan readResult, 16),
+		writeCh:        make(chan writeCall, 256),
+		closeCh:        make(chan struct{}),
+		writeEnteredCh: make(chan struct{}),
 	}
 }
 
@@ -71,7 +83,20 @@ func (m *mockTransport) Write(ctx context.Context, messageType core.MessageType,
 		m.mu.Unlock()
 		return net.ErrClosed
 	}
+	blockWrite := m.blockWrite
 	m.mu.Unlock()
+
+	// Signal that writePump has entered Write. Lets tests synchronise on
+	// the moment writePump is actually inside trans.Write before they
+	// trigger shutdown — no time.Sleep needed.
+	m.writeEnteredOnce.Do(func() { close(m.writeEnteredCh) })
+
+	if blockWrite {
+		// Simulate a slow real-world TCP write that returns only when
+		// the deadline fires or the pump context is cancelled.
+		<-ctx.Done()
+		return ctx.Err()
+	}
 
 	copied := make([]byte, len(data))
 	copy(copied, data)
@@ -110,12 +135,13 @@ func (m *mockTransport) SetReadLimit(limit int64) {
 	m.mu.Unlock()
 }
 
-func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
+func (m *mockTransport) Close(code core.StatusCode, reason string) error {
 	m.mu.Lock()
 	if m.blockClose {
 		m.mu.Unlock()
 		return nil
 	}
+	m.closeCalls = append(m.closeCalls, closeCall{code: code, reason: reason})
 	m.mu.Unlock()
 	m.closeOnce.Do(func() {
 		m.mu.Lock()
@@ -124,6 +150,16 @@ func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
 		close(m.closeCh)
 	})
 	return nil
+}
+
+// CloseCalls returns a copy of every Close(code, reason) call recorded so far.
+// Safe to call concurrently.
+func (m *mockTransport) CloseCalls() []closeCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]closeCall, len(m.closeCalls))
+	copy(out, m.closeCalls)
+	return out
 }
 
 func (m *mockTransport) CloseNow() error {
@@ -156,6 +192,16 @@ func (m *mockTransport) CloseNow() error {
 func (m *mockTransport) SetBlockClose(block bool) {
 	m.mu.Lock()
 	m.blockClose = block
+	m.mu.Unlock()
+}
+
+// SetBlockWrite makes Write block on ctx.Done instead of returning quickly.
+// Used to put writePump into a "stuck mid-write" state so tests can verify
+// behaviour when shutdown cancels pumpCtx during trans.Write — for example,
+// asserting the close frame is still emitted on the way out.
+func (m *mockTransport) SetBlockWrite(block bool) {
+	m.mu.Lock()
+	m.blockWrite = block
 	m.mu.Unlock()
 }
 

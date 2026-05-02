@@ -50,8 +50,12 @@ first (e.g. by `detachWS` during resume), the bridge exits without effect.
   sends a `transportDied` message to the heart and exits.
 - `writePump` owns the TCP connection close call: it calls `transport.CloseNow()`
   on exit (via defer) to ensure the underlying socket is always released.
-  On graceful shutdown (`ctx.Done()`), it first sends a close frame via
-  `transport.Close(StatusNormalClosure, "")`.
+  On graceful shutdown (`session.done` closed), it first sends a close frame
+  via `transport.Close(code, reason)`. The `(code, reason)` pair is set on
+  the session by `closeWith` before `done` is closed; see §4 for the full
+  mapping. On reconnect-swap (`pumpCtx` cancelled while `session.done` is
+  still open) writePump exits via the priority-exit path without sending a
+  close frame — the replacement pump owns the connection.
 - `pingPump` sends periodic Pings with a `writeTimeout` timeout. On failure it
   fires the `HeartbeatFailed` metric and calls `transport.CloseNow()` to force the
   transport closed, causing `readPump` to detect the error and signal the heart.
@@ -160,12 +164,33 @@ cause (close frame / network drop / ping timeout)
   → readPump: Read(ctx) returns error, sends transportDiedMessage to heart
   → heart: if resumeWindow > 0 → suspend session (start grace timer)
            if resumeWindow == 0 → remove session, call OnDisconnect
-  → session.Close() (via closeOnce): closes done channel
+  → session.closeWith(code, reason) (via closeOnce): records the
+      close-frame data on the session and closes the done channel
   → bridge goroutine: <-done → pumpCancel()
-  → writePump: ctx.Done() fires, sends Close(StatusNormalClosure) only
-    on session shutdown (s.done closed); skipped on reconnect swap
-    and if the priority-exit path runs first. Defers CloseNow()
+  → writePump: send queue closed → err branch → reads (code, reason)
+      under s.mu and emits transport.Close(code, reason). Defers CloseNow().
+      Skipped on reconnect-swap (pumpCtx cancelled while session.done is
+      still open) so the replacement pump owns the connection.
 ```
+
+### Close-frame mapping
+
+The `(code, reason)` pair the writePump emits depends on which
+`DisconnectReason` triggered the teardown:
+
+| Cause                                 | Code   | Reason string             |
+| ------------------------------------- | ------ | ------------------------- |
+| Application `Connection.Close()`      | `1000` | `""`                      |
+| `Hub.Kick`                            | `1000` | `"kicked"`                |
+| Duplicate `connectionID` displacement | `1000` | `"duplicate connection id"` |
+| Hub shutdown (`Hub.Close`)            | `1001` | `"server shutting down"`  |
+| Resume grace window expired           | n/a    | n/a — transport already dead |
+
+Application semantics live in the reason string; `core.StatusCode` is left
+to RFC 6455 protocol-level usage. Both heart-driven teardown sites —
+`heart.disconnectSession` and `heart.shutdown` — resolve the close frame
+through `closeFrameForReason`, which is the single source of truth for the
+mapping.
 
 Explicit teardown via `Hub.Kick(connectionID)` takes a different path — the
 kick request is routed through the heart to ensure serialized cleanup (see
