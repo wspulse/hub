@@ -19,7 +19,7 @@ making any changes.
 - `options.go` — `HubOption` builders
 - `resume.go` — ring buffer for session resumption
 - `errors.go` — sentinel errors
-- `doc/internals.md` — internal architecture
+- `docs/internals.md` — internal architecture
 - Wire protocol spec: [`.github/doc/protocol.md`](https://github.com/wspulse/.github/blob/main/doc/protocol.md)
 
 **Pre-commit gate**: `make check` (fmt → lint → test)
@@ -28,7 +28,7 @@ making any changes.
 
 ## Non-negotiable Rules
 
-1. **Read before write** — read the target file + `doc/internals.md` before any edit.
+1. **Read before write** — read the target file + `docs/internals.md` before any edit.
    For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 2. **Heart serialization** — all session state mutations go through the heart's
    event loop. Never mutate session state from outside the heart goroutine.
@@ -42,9 +42,9 @@ making any changes.
 
 ## Session Protocol
 
-> `doc/local/` is git-ignored. Never commit files under it.
+> `docs/local/` is git-ignored. Never commit files under it.
 
-- **Start of session**: read `doc/local/ai-learning.md` in full (create with header if missing) and check `doc/local/plan/` for any in-progress plan.
-- **Feature work**: save plan to `doc/local/plan/<feature-name>.md` before starting.
-- **End of session**: append at least one entry to `doc/local/ai-learning.md` — **mandatory even if no mistakes were made**. An empty file proves the session protocol was ignored.
+- **Start of session**: read `docs/local/ai-learning.md` in full (create with header if missing) and check `docs/local/plan/` for any in-progress plan.
+- **Feature work**: save plan to `docs/local/plan/<feature-name>.md` before starting.
+- **End of session**: append at least one entry to `docs/local/ai-learning.md` — **mandatory even if no mistakes were made**. An empty file proves the session protocol was ignored.
   Format: `Date` / `Issue or Learning` / `Root Cause` / `Prevention Rule`.

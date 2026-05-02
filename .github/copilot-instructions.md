@@ -12,7 +12,7 @@ wspulse/hub is a **minimal, production-ready WebSocket server library** for Go. 
 - **`options.go`** — `HubOption` functional options, `ConnectFunc` type, and all `WithXxx` option builders.
 - **`resume.go`** — Ring buffer for buffering messages during temporary disconnects (session resumption).
 - **`errors.go`** — Hub-only sentinel errors: `ErrConnectionNotFound`, `ErrDuplicateConnectionID`, `ErrHubClosed`.
-- **`doc/internals.md`** — Internal architecture documentation.
+- **`docs/internals.md`** — Internal architecture documentation.
 - Wire protocol specification has moved to the [`.github` repo](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 
 ## Development Workflow
@@ -63,7 +63,7 @@ make tidy             # tidy module dependencies
 
 All new features and design changes follow this process — do not skip steps:
 
-1. **Plan** — write idea to `doc/local/plan/<name>.md` (local only, git-ignored)
+1. **Plan** — write idea to `docs/local/plan/<name>.md` (local only, git-ignored)
 2. **Quick discussion** — feasibility + value check
 3. **Go / No-go** — kill or proceed
 4. **Layer check** — transport layer (wspulse implements) or application layer (write docs recipe instead)
@@ -73,7 +73,7 @@ All new features and design changes follow this process — do not skip steps:
 
 ## Critical Rules
 
-1. **Read before write** — always read the target file and `doc/internals.md` fully before editing. For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
+1. **Read before write** — always read the target file and `docs/internals.md` fully before editing. For wire protocol details see the [centralized protocol spec](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 2. **Minimal changes** — one concern per edit; no drive-by refactors.
 3. **No hardcoded secrets** — all configuration via environment variables.
 4. **Heart serialization** — all session state mutations must go through the heart's event loop. Never mutate session state from outside the heart goroutine.
@@ -130,9 +130,9 @@ Present all findings to the user before taking action. For each comment, show:
 After approval, carry out each decision and respond on the PR:
 
 - **`Fixed in {hash}. {what changed and why}`** — adopt and fix immediately. Bug and correctness issues must use this path unless the fix requires a separate PR due to scope.
-- **`Tracked in TODOS.md — {reason for deferring}`** — adopt but defer. Add entry to repo root `TODOS.md` with context and PR comment link.
+- **`Tracked in docs/TODOS.md — {reason for deferring}`** — adopt but defer. Add entry to `docs/TODOS.md` with context and PR comment link.
 - **`Won't fix. {clear reasoning}`** — reject the suggestion with explanation.
-- **`Not applicable — {explanation}`** — the comment does not apply (already handled, misunderstanding, duplicate, or already tracked in TODOS.md).
+- **`Not applicable — {explanation}`** — the comment does not apply (already handled, misunderstanding, duplicate, or already tracked in `docs/TODOS.md`).
 
 Duplicate or related comments may reference each other: `Same reasoning as {reference} above — {brief}`.
 
@@ -142,19 +142,19 @@ The PR must have zero unaddressed comments before merge. This is a hard gate.
 
 ## Session Protocol
 
-> Files under `doc/local/` are git-ignored and must **never** be committed.
-> This includes plan files (`doc/local/plan/`), review records, and the AI learning log (`doc/local/ai-learning.md`).
+> Files under `docs/local/` are git-ignored and must **never** be committed.
+> This includes plan files (`docs/local/plan/`), review records, and the AI learning log (`docs/local/ai-learning.md`).
 
 ### Start of every session — MANDATORY
 
 **Do these steps before writing any code:**
 
-1. Read `doc/local/ai-learning.md` **in full** to recall past mistakes. If the file is missing or empty, create it with the table header (see format below) before proceeding.
-2. Check `doc/local/plan/` for any in-progress plan and read it fully.
+1. Read `docs/local/ai-learning.md` **in full** to recall past mistakes. If the file is missing or empty, create it with the table header (see format below) before proceeding.
+2. Check `docs/local/plan/` for any in-progress plan and read it fully.
 
 ### During feature work — doc before code
 
-Before writing any production code, create or update `doc/local/plan/<feature-name>.md` with:
+Before writing any production code, create or update `docs/local/plan/<feature-name>.md` with:
 
 1. **What** — what are you changing or adding?
 2. **Why** — what problem does it solve? What motivated this change?
@@ -162,28 +162,28 @@ Before writing any production code, create or update `doc/local/plan/<feature-na
 
 Keep it updated as the approach evolves. This is the primary cross-session context for understanding what was done and why.
 
-For bug fixes, the failing test serves as the "what"; add a brief "why" and "how" to the plan file or `doc/local/ai-learning.md`.
+For bug fixes, the failing test serves as the "what"; add a brief "why" and "how" to the plan file or `docs/local/ai-learning.md`.
 
 ### Review records
 
 After conducting any review (code review, plan review, design review, PR review, etc.), record the findings for cross-session context:
 
-- **Where to write**: this repo's `doc/local/`. If working in a multi-module workspace, also write to the workspace root's `doc/local/`.
+- **Where to write**: this repo's `docs/local/`. If working in a multi-module workspace, also write to the workspace root's `docs/local/`.
 - **Single truth**: write the full record in one location; the other location keeps a brief summary with a file path reference to the full record.
 - **Acceptable formats**:
-  1. Update the relevant plan file in `doc/local/plan/` with the review outcome.
-  2. Dedicated review file in `doc/local/` if no relevant plan exists.
+  1. Update the relevant plan file in `docs/local/plan/` with the review outcome.
+  2. Dedicated review file in `docs/local/` if no relevant plan exists.
 - **What to record**: review type, key findings, decisions made, action items, and resolution status.
 
 ### End of every session — MANDATORY
 
 **Before closing the session, complete this checklist without exception:**
 
-1. Append at least one entry to `doc/local/ai-learning.md` — **even if no mistakes were made**. Record what you confirmed, what technique worked, or what you observed. An empty file is a sign of non-compliance.
-2. Update any in-progress plan in `doc/local/plan/` to reflect completed steps.
+1. Append at least one entry to `docs/local/ai-learning.md` — **even if no mistakes were made**. Record what you confirmed, what technique worked, or what you observed. An empty file is a sign of non-compliance.
+2. Update any in-progress plan in `docs/local/plan/` to reflect completed steps.
 3. Verify `make check` passes in every module you edited.
 
-**Entry format** for `doc/local/ai-learning.md`:
+**Entry format** for `docs/local/ai-learning.md`:
 
 ```
 | Date       | Issue or Learning | Root Cause | Prevention Rule |

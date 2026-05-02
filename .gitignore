@@ -260,7 +260,7 @@ hs_err_pid*
 vendor/
 tmp/
 temp/
-doc/local/
+docs/local/
 *.local.*
 go.work
 go.work.sum

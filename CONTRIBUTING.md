@@ -7,7 +7,7 @@ Thank you for your interest in contributing. This document describes the process
 - Open an issue to discuss significant changes before starting work.
 - For bug fixes, write a failing test that reproduces the issue before modifying production code. The PR must include this test.
 - For new features, confirm scope and API design in an issue first.
-- Read `doc/internals.md` before writing any code. For the wire protocol spec see the [centralized protocol doc](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
+- Read `docs/internals.md` before writing any code. For the wire protocol spec see the [centralized protocol doc](https://github.com/wspulse/.github/blob/main/doc/protocol.md).
 
 ## Development Setup
 
