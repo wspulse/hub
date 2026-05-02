@@ -608,7 +608,10 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 			// closed), not on reconnect swap where speed matters and the
 			// old transport may already be dead. closeCode/closeReason are
 			// set by closeWith before close(s.done), so the channel-receive
-			// below establishes the happens-before edge for these reads.
+			// already gives us the happens-before edge needed to read them
+			// safely. The s.mu acquisition below is defensive — it mirrors
+			// closeWith's write site so the access pattern stays consistent
+			// across the file.
 			select {
 			case <-s.done:
 				s.mu.Lock()

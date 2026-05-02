@@ -120,11 +120,11 @@ func (m *mockTransport) SetReadLimit(limit int64) {
 
 func (m *mockTransport) Close(code core.StatusCode, reason string) error {
 	m.mu.Lock()
-	m.closeCalls = append(m.closeCalls, closeCall{code: code, reason: reason})
 	if m.blockClose {
 		m.mu.Unlock()
 		return nil
 	}
+	m.closeCalls = append(m.closeCalls, closeCall{code: code, reason: reason})
 	m.mu.Unlock()
 	m.closeOnce.Do(func() {
 		m.mu.Lock()

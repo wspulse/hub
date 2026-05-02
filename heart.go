@@ -473,15 +473,18 @@ func (h *heart) disconnectSession(target *session, err error, reason DisconnectR
 // closeFrameForReason returns the WebSocket close code and reason string the
 // hub should emit when terminating a session for the given DisconnectReason.
 //
-// All cases use StatusNormalClosure (1000) — the server is performing an
-// intentional close. The reason string carries the diagnostic context.
-// StatusGoingAway is reserved for hub shutdown, applied directly in shutdown().
+// Most cases use StatusNormalClosure (1000) — the server is performing an
+// intentional close, and the reason string carries the diagnostic context.
+// DisconnectHubClose is the exception: hub shutdown maps to StatusGoingAway
+// (1001), which is RFC 6455 §7.4.1's exact use of "server going away".
 func closeFrameForReason(reason DisconnectReason) (core.StatusCode, string) {
 	switch reason {
 	case DisconnectKick:
 		return core.StatusNormalClosure, "kicked"
 	case DisconnectDuplicate:
 		return core.StatusNormalClosure, "duplicate connection id"
+	case DisconnectHubClose:
+		return core.StatusGoingAway, "server shutting down"
 	default:
 		// DisconnectNormal, DisconnectGraceExpired, and any future reason
 		// that has not been assigned a dedicated string fall through to
@@ -537,13 +540,12 @@ func (h *heart) shutdown() {
 	}
 	var closedInfos []closedInfo
 	var destroyedRooms []string
+	hubCloseCode, hubCloseReason := closeFrameForReason(DisconnectHubClose)
 	for roomID, room := range h.rooms {
 		for _, target := range room {
 			target.cancelGraceTimer()
 			closedInfos = append(closedInfos, closedInfo{target.roomID, target.id, time.Since(target.connectedAt)})
-			// Close with StatusGoingAway so the close frame carries
-			// "server shutting down" — RFC 6455 §7.4.1's exact use of 1001.
-			_ = target.closeWith(core.StatusGoingAway, "server shutting down")
+			_ = target.closeWith(hubCloseCode, hubCloseReason)
 			disconnected = append(disconnected, target)
 		}
 		destroyedRooms = append(destroyedRooms, roomID)
