@@ -186,7 +186,7 @@ The interface covers:
 | `ResumeAttempt` | Session resumption tracking |
 | `HeartbeatFailed` | Heartbeat health |
 
-Implement `MetricsCollector` to plug in any backend (Prometheus, OTel, or custom). See [doc/internals.md](doc/internals.md) for goroutine call sites and thread safety requirements.
+Implement `MetricsCollector` to plug in any backend (Prometheus, OTel, or custom). See [docs/internals.md](docs/internals.md) for goroutine call sites and thread safety requirements.
 
 ---
 

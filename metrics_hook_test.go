@@ -261,6 +261,72 @@ func TestMetricsCollector_MessageDropped_BroadcastDropOldest(t *testing.T) {
 	}
 }
 
+// ── Metrics: broadcast counter excludes mid-broadcast closed sessions ───────
+//
+// Regression test for issue wspulse/hub#63. handleBroadcast iterates the room
+// snapshot and calls target.enqueue for each session. The `<-target.done`
+// soft check at the top of the loop only catches sessions whose done channel
+// is already closed; if a session's send queue closes between the check and
+// the enqueue call, enqueue returns ErrConnectionClosed but the
+// MessageBroadcast metric used to count the recipient anyway. After the fix,
+// the counter only ticks up when enqueue succeeds.
+
+func TestMetricsCollector_MessageBroadcast_ExcludesClosedSession(t *testing.T) {
+	t.Parallel()
+	rec := &recordingCollector{}
+	connected := make(chan struct{}, 3)
+
+	connIndex := 0
+	srv := wspulse.NewHub(
+		func(_ *http.Request) (string, string, error) {
+			connIndex++
+			return "broadcast-room", fmt.Sprintf("conn-%d", connIndex), nil
+		},
+		wspulse.WithMetrics(rec),
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	// Inject three sessions in the same room. conn-2 has BlockClose set
+	// so the writePump's deferred CloseNow (after we close its send queue)
+	// does not tear the session down — readPump stays blocked on the mock
+	// transport, session.done stays open, and the session remains in the
+	// hub's room map for the broadcast to iterate.
+	mt1 := newMockTransport()
+	mt2 := newMockTransport()
+	mt3 := newMockTransport()
+	mt2.SetBlockClose(true)
+
+	wspulse.InjectTransport(srv, "conn-1", "broadcast-room", mt1)
+	wspulse.InjectTransport(srv, "conn-2", "broadcast-room", mt2)
+	wspulse.InjectTransport(srv, "conn-3", "broadcast-room", mt3)
+	requireReceive(t, connected)
+	requireReceive(t, connected)
+	requireReceive(t, connected)
+
+	// Force the race: close conn-2's send queue while leaving its done
+	// channel open. <-target.done falls through to default in
+	// handleBroadcast; target.enqueue returns ErrConnectionClosed.
+	require.NoError(t, wspulse.CloseSessionSendQueue(srv, "conn-2"))
+
+	require.NoError(t, srv.Broadcast("broadcast-room", wspulse.Message{Event: "ping", Payload: []byte(`{}`)}))
+
+	// Wait for the heart goroutine to record the broadcast.
+	deadline := time.Now().Add(time.Second)
+	for rec.countByName("MessageBroadcast") < 1 {
+		if time.Now().After(deadline) {
+			require.Failf(t, "timed out", "MessageBroadcast not recorded")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	events := rec.eventsByName("MessageBroadcast")
+	require.Len(t, events, 1)
+	assert.Equal(t, 2, events[0].fanOut, "broadcast counter must exclude session whose enqueue failed")
+}
+
 // ── Metrics: heartbeat failed ────────────────────────────────────────────────
 // HeartbeatFailed is fired by pingPump when transport.Ping() fails. Install a
 // ping handler that blocks until signalled, then returns an error.
