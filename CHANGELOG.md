@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Server-initiated close frames now carry cause-specific data instead of
+  always emitting `(1000, "")`. New mapping:
+  | Cause | Code | Reason string |
+  |-------|------|---------------|
+  | Application `Connection.Close()` | `1000` | `""` (unchanged) |
+  | `Hub.Kick` | `1000` | `"kicked"` |
+  | Duplicate connection id displaces a session | `1000` | `"duplicate connection id"` |
+  | Hub shutdown (`Hub.Close`) | `1001` | `"server shutting down"` |
+
+  Wire-visible to clients but strictly more informative — clients that
+  ignored the close frame data are unaffected. `core.StatusCode` is
+  unchanged; the cause information lives in the reason string. (#58)
+
+### Fixed
+
+- `writePump` no longer skips the graceful close frame when the pump
+  context is cancelled by hub shutdown. Previously the priority-exit at
+  the top of the write loop fired on both reconnect-swap (correct) and
+  shutdown (incorrect, the close frame was dropped). The priority-exit
+  now triggers only when the session itself is still alive, so shutdown
+  always emits the close frame.
+
 ## [0.11.2] - 2026-05-02
 
 ### Fixed
