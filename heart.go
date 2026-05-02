@@ -480,6 +480,8 @@ func closeFrameForReason(reason DisconnectReason) (core.StatusCode, string) {
 	switch reason {
 	case DisconnectKick:
 		return core.StatusNormalClosure, "kicked"
+	case DisconnectDuplicate:
+		return core.StatusNormalClosure, "duplicate connection id"
 	default:
 		// DisconnectNormal, DisconnectGraceExpired, and any future reason
 		// that has not been assigned a dedicated string fall through to

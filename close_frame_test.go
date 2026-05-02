@@ -74,3 +74,43 @@ func TestHub_Kick_EmitsKickedReason(t *testing.T) {
 	assert.Equal(t, core.StatusNormalClosure, calls[0].code)
 	assert.Equal(t, "kicked", calls[0].reason)
 }
+
+// ── Duplicate conn_id close frame ───────────────────────────────────────────
+
+// TestHub_DuplicateConnectionID_EmitsDuplicateReason verifies that when a
+// second InjectTransport arrives with the same connectionID, the displaced
+// session's close frame is (1000, "duplicate connection id") rather than
+// the generic (1000, ""). This lets clients distinguish "your session was
+// taken over by a same-id login" from a routine close.
+func TestHub_DuplicateConnectionID_EmitsDuplicateReason(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 2)
+	disconnected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			disconnected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	first := injectAndWait(t, srv, "dup-conn", "room-1", connected)
+
+	// Second registration with the same conn_id evicts the first.
+	second := newMockTransport()
+	wspulse.InjectTransport(srv, "dup-conn", "room-1", second)
+	requireReceive(t, connected) // second session connects
+
+	// The first session is the one being kicked out — wait for its
+	// onDisconnect, then for its writePump to emit the close frame.
+	requireReceive(t, disconnected)
+	<-first.closeCh
+
+	calls := first.CloseCalls()
+	require.Len(t, calls, 1, "expected exactly one Close(code, reason) call from duplicate path")
+	assert.Equal(t, core.StatusNormalClosure, calls[0].code)
+	assert.Equal(t, "duplicate connection id", calls[0].reason)
+}
