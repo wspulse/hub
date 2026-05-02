@@ -187,10 +187,10 @@ The `(code, reason)` pair the writePump emits depends on which
 | Resume grace window expired           | n/a    | n/a — transport already dead |
 
 Application semantics live in the reason string; `core.StatusCode` is left
-to RFC 6455 protocol-level usage. The mapping is applied by
-`heart.disconnectSession` (which routes through `closeFrameForReason`) and
-`heart.shutdown` (which sets `(StatusGoingAway, "server shutting down")`
-inline).
+to RFC 6455 protocol-level usage. Both heart-driven teardown sites —
+`heart.disconnectSession` and `heart.shutdown` — resolve the close frame
+through `closeFrameForReason`, which is the single source of truth for the
+mapping.
 
 Explicit teardown via `Hub.Kick(connectionID)` takes a different path — the
 kick request is routed through the heart to ensure serialized cleanup (see

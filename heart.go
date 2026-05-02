@@ -456,10 +456,11 @@ func (h *heart) handleBroadcast(message broadcastMessage) {
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
 //
-// The DisconnectReason is mapped to a (code, reason) pair so the close frame
-// the remote peer receives carries cause information. Reasons that emerge
-// outside this code path (hub shutdown via shutdown()) supply their own
-// (code, reason) directly to closeWith.
+// The DisconnectReason is mapped to a (code, reason) pair via
+// closeFrameForReason so the close frame the remote peer receives carries
+// cause information. Hub shutdown (handled in shutdown()) uses the same
+// mapper, so closeFrameForReason is the single source of truth for the
+// close-frame mapping.
 func (h *heart) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)

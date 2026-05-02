@@ -5,17 +5,19 @@
 ### Changed
 
 - Server-initiated close frames now carry cause-specific data instead of
-  always emitting `(1000, "")`. New mapping:
-  | Cause | Code | Reason string |
-  |-------|------|---------------|
-  | Application `Connection.Close()` | `1000` | `""` (unchanged) |
-  | `Hub.Kick` | `1000` | `"kicked"` |
-  | Duplicate connection id displaces a session | `1000` | `"duplicate connection id"` |
-  | Hub shutdown (`Hub.Close`) | `1001` | `"server shutting down"` |
+  always emitting `(1000, "")`. Wire-visible to clients but strictly more
+  informative — clients that ignored the close frame data are unaffected.
+  `core.StatusCode` is unchanged; the cause information lives in the reason
+  string. (#58)
 
-  Wire-visible to clients but strictly more informative — clients that
-  ignored the close frame data are unaffected. `core.StatusCode` is
-  unchanged; the cause information lives in the reason string. (#58)
+  New mapping:
+
+  | Cause                                       | Code   | Reason string             |
+  |---------------------------------------------|--------|---------------------------|
+  | Application `Connection.Close()`            | `1000` | `""` (unchanged)          |
+  | `Hub.Kick`                                  | `1000` | `"kicked"`                |
+  | Duplicate connection id displaces a session | `1000` | `"duplicate connection id"` |
+  | Hub shutdown (`Hub.Close`)                  | `1001` | `"server shutting down"`  |
 
 ### Fixed
 
