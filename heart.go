@@ -455,12 +455,38 @@ func (h *heart) handleBroadcast(message broadcastMessage) {
 // disconnectSession removes the session from heart maps, closes it, and fires
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
+//
+// The DisconnectReason is mapped to a (code, reason) pair so the close frame
+// the remote peer receives carries cause information. Reasons that emerge
+// outside this code path (hub shutdown via shutdown()) supply their own
+// (code, reason) directly to closeWith.
 func (h *heart) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
-	_ = target.Close()
+	code, frameReason := closeFrameForReason(reason)
+	_ = target.closeWith(code, frameReason)
 	if fn := h.config.onDisconnect; fn != nil {
 		go fn(target, err)
+	}
+}
+
+// closeFrameForReason returns the WebSocket close code and reason string the
+// hub should emit when terminating a session for the given DisconnectReason.
+//
+// All cases use StatusNormalClosure (1000) — the server is performing an
+// intentional close. The reason string carries the diagnostic context.
+// StatusGoingAway is reserved for hub shutdown, applied directly in shutdown().
+func closeFrameForReason(reason DisconnectReason) (core.StatusCode, string) {
+	switch reason {
+	case DisconnectKick:
+		return core.StatusNormalClosure, "kicked"
+	default:
+		// DisconnectNormal, DisconnectGraceExpired, and any future reason
+		// that has not been assigned a dedicated string fall through to
+		// the wire-level default. DisconnectGraceExpired never reaches a
+		// live transport (the WebSocket already died before the grace
+		// timer fired), so the value is moot for that case.
+		return core.StatusNormalClosure, ""
 	}
 }
 

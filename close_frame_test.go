@@ -41,3 +41,36 @@ func TestHub_Close_EmitsServerShuttingDown(t *testing.T) {
 	assert.Equal(t, core.StatusGoingAway, calls[0].code)
 	assert.Equal(t, "server shutting down", calls[0].reason)
 }
+
+// ── Kick close frame ────────────────────────────────────────────────────────
+
+// TestHub_Kick_EmitsKickedReason verifies that Hub.Kick produces a close
+// frame with StatusNormalClosure (1000) and the reason "kicked", letting
+// clients distinguish a server-initiated kick from a routine close on the
+// wire.
+func TestHub_Kick_EmitsKickedReason(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	disconnected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			disconnected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	mt := injectAndWait(t, srv, "kick-target", "room-1", connected)
+
+	require.NoError(t, srv.Kick("kick-target"))
+	requireReceive(t, disconnected)
+	<-mt.closeCh
+
+	calls := mt.CloseCalls()
+	require.Len(t, calls, 1, "expected exactly one Close(code, reason) call from kick path")
+	assert.Equal(t, core.StatusNormalClosure, calls[0].code)
+	assert.Equal(t, "kicked", calls[0].reason)
+}
