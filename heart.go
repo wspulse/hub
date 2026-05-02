@@ -422,8 +422,13 @@ func (h *heart) handleBroadcast(message broadcastMessage) {
 
 		// Use enqueue with drop-oldest so suspended sessions buffer to
 		// resumeBuffer and connected sessions apply backpressure uniformly.
-		_ = target.enqueue(message.data, true)
-		enqueued++
+		// Only count the recipient when enqueue succeeds: a session can
+		// close in the window between the <-target.done check and this
+		// call, in which case enqueue returns ErrConnectionClosed and the
+		// message is not delivered.
+		if err := target.enqueue(message.data, true); err == nil {
+			enqueued++
+		}
 	}
 	h.config.metrics.MessageBroadcast(message.roomID, len(message.data), enqueued)
 	h.config.logger.Debug("wspulse: broadcast dispatched",

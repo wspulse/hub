@@ -25,6 +25,7 @@ type mockTransport struct {
 	mu          sync.Mutex
 	readLimit   int64
 	closed      bool
+	blockClose  bool                            // true = CloseNow / Close are no-ops
 	pingHandler func(ctx context.Context) error // nil = always succeed
 }
 
@@ -110,6 +111,12 @@ func (m *mockTransport) SetReadLimit(limit int64) {
 }
 
 func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
+	m.mu.Lock()
+	if m.blockClose {
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
 	m.closeOnce.Do(func() {
 		m.mu.Lock()
 		m.closed = true
@@ -120,6 +127,12 @@ func (m *mockTransport) Close(_ core.StatusCode, _ string) error {
 }
 
 func (m *mockTransport) CloseNow() error {
+	m.mu.Lock()
+	if m.blockClose {
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
 	m.closeOnce.Do(func() {
 		m.mu.Lock()
 		m.closed = true
@@ -127,6 +140,21 @@ func (m *mockTransport) CloseNow() error {
 		close(m.closeCh)
 	})
 	return nil
+}
+
+// SetBlockCloseNow makes Close and CloseNow no-ops. Used when the test needs
+// writePump to exit (e.g. because the send queue was force-closed) without
+// triggering the standard transportDied teardown — readPump stays blocked,
+// session.done stays open, and the session remains in the hub's maps.
+//
+// The mockTransport's `closed` flag stays false while blockClose is set; do
+// not assert on it after calling. Cleanup still works: when the hub closes,
+// session.done is closed, the bridge cancels pumpCtx, and readPump exits
+// because mockTransport.Read honours the context.
+func (m *mockTransport) SetBlockCloseNow(block bool) {
+	m.mu.Lock()
+	m.blockClose = block
+	m.mu.Unlock()
 }
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
