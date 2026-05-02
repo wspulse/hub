@@ -42,7 +42,7 @@ func WithClock(c Clock) HubOption {
 // the soft `<-target.done` check falls through to default while
 // `target.enqueue` returns carousel.ErrClosed. See issue wspulse/hub#63.
 //
-// The session's mockTransport must have BlockCloseNow set before calling
+// The session's mockTransport must have BlockClose set before calling
 // this helper, otherwise the writePump's deferred CloseNow will tear the
 // session down through the standard transportDied path before the test can
 // observe the broadcast.

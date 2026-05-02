@@ -289,7 +289,7 @@ func TestMetricsCollector_MessageBroadcast_ExcludesClosedSession(t *testing.T) {
 	)
 	t.Cleanup(srv.Close)
 
-	// Inject three sessions in the same room. conn-2 has BlockCloseNow set
+	// Inject three sessions in the same room. conn-2 has BlockClose set
 	// so the writePump's deferred CloseNow (after we close its send queue)
 	// does not tear the session down — readPump stays blocked on the mock
 	// transport, session.done stays open, and the session remains in the
@@ -297,7 +297,7 @@ func TestMetricsCollector_MessageBroadcast_ExcludesClosedSession(t *testing.T) {
 	mt1 := newMockTransport()
 	mt2 := newMockTransport()
 	mt3 := newMockTransport()
-	mt2.SetBlockCloseNow(true)
+	mt2.SetBlockClose(true)
 
 	wspulse.InjectTransport(srv, "conn-1", "broadcast-room", mt1)
 	wspulse.InjectTransport(srv, "conn-2", "broadcast-room", mt2)

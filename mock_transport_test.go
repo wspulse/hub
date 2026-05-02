@@ -142,16 +142,18 @@ func (m *mockTransport) CloseNow() error {
 	return nil
 }
 
-// SetBlockCloseNow makes Close and CloseNow no-ops. Used when the test needs
-// writePump to exit (e.g. because the send queue was force-closed) without
-// triggering the standard transportDied teardown — readPump stays blocked,
-// session.done stays open, and the session remains in the hub's maps.
+// SetBlockClose makes both Close and CloseNow no-ops. Used when the test
+// needs writePump to exit (e.g. because the send queue was force-closed)
+// without triggering the standard transportDied teardown — readPump stays
+// blocked, session.done stays open, and the session remains in the hub's
+// maps. Both methods are gated because writePump's exit path may also call
+// Close(StatusNormalClosure, "") if session.done has closed during shutdown.
 //
 // The mockTransport's `closed` flag stays false while blockClose is set; do
 // not assert on it after calling. Cleanup still works: when the hub closes,
 // session.done is closed, the bridge cancels pumpCtx, and readPump exits
 // because mockTransport.Read honours the context.
-func (m *mockTransport) SetBlockCloseNow(block bool) {
+func (m *mockTransport) SetBlockClose(block bool) {
 	m.mu.Lock()
 	m.blockClose = block
 	m.mu.Unlock()
