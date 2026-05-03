@@ -573,10 +573,14 @@ func isNormalClose(err error) bool {
 // cancelled but s.done still open) this is a no-op — the replacement pump
 // owns the connection.
 //
-// closeCode/closeReason are set inside the same closeOnce.Do body that
-// closes s.done, so observing s.done closed provides the happens-before
-// edge needed to read them safely. The s.mu acquisition mirrors closeWith's
-// write site for access-pattern consistency.
+// closeCode/closeReason are normally set by closeWith inside the same
+// closeOnce.Do body that closes s.done; observing s.done closed gives the
+// happens-before edge needed to read them. The readPump heart-shutdown
+// safety-net path closes s.done directly via closeOnce.Do without going
+// through closeWith — when that race wins, the fields keep the constructor
+// defaults (StatusNormalClosure, "") set in handleRegister, which is still
+// a valid close frame. The s.mu acquisition mirrors closeWith's write site
+// for access-pattern consistency.
 //
 // All writePump exit paths that may run during shutdown call this helper so
 // the close frame is emitted regardless of which I/O step the pump was on
