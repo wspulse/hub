@@ -326,9 +326,9 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 			}
 		}
 
-		// Reconnect: a fresh mock transport triggers attachWS, which drains
-		// resumeBuffer back into the send queue inside the heart goroutine
-		// before onTransportRestore fires.
+		// Reconnect: a fresh mock transport triggers attachWS, which spawns
+		// a transition goroutine to drain resumeBuffer back into the send
+		// queue. onTransportRestore fires after the drain completes.
 		mt = newMockTransport()
 		b.StartTimer()
 		wspulse.InjectTransport(srv, connectionID, roomID, mt)

@@ -18,8 +18,9 @@ The matrix covers:
   `messageSize ∈ {64 B, 1 KiB, 16 KiB}`.
 - `Send` — direct per-connection enqueue cost across the same payload sizes.
 - `Enqueue (drop-oldest)` — backpressure path when the send buffer is full.
-- `Resume buffer drain (256 msgs)` — heart-side cost of replaying a full
-  256-slot resume buffer into the send queue at reconnect time.
+- `Resume buffer drain (256 msgs)` — cost of replaying a full 256-slot
+  resume buffer into the send queue at reconnect time. The drain runs in
+  a transition goroutine spawned by `attachWS`, not on the heart loop.
 
 <!-- benchsync:hub:start -->
 Measured on `darwin/arm64` (`Apple M1 Max`).
