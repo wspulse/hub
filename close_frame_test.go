@@ -26,6 +26,9 @@ func TestHub_Close_DuringBlockedWrite_StillEmitsServerShuttingDown(t *testing.T)
 			connected <- struct{}{}
 		}),
 	)
+	// Safety net: srv.Close is also called explicitly below, but goleak
+	// would flag a leak if any assertion above the explicit Close fails.
+	t.Cleanup(srv.Close)
 
 	mt := newMockTransport()
 	// Make Write block until ctx done, simulating a slow TCP write.
@@ -66,6 +69,9 @@ func TestHub_Close_EmitsServerShuttingDown(t *testing.T) {
 			connected <- struct{}{}
 		}),
 	)
+	// Safety net: srv.Close is also called explicitly below, but goleak
+	// would flag a leak if any assertion above the explicit Close fails.
+	t.Cleanup(srv.Close)
 
 	mt := injectAndWait(t, srv, "conn-1", "room-1", connected)
 
