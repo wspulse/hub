@@ -289,10 +289,21 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 	)
 	b.Cleanup(srv.Close)
 
+	// waitFor blocks on ch with a timeout; if the callback that fills ch
+	// fails to fire (regression in InjectTransport / resume wiring), the
+	// bench fails fast instead of hanging until the CI job timeout.
+	waitFor := func(ch <-chan struct{}, what string) {
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			b.Fatalf("timed out waiting for %s", what)
+		}
+	}
+
 	// Initial connect.
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt)
-	<-connected
+	waitFor(connected, "initial connect")
 
 	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(64)}
 
@@ -302,7 +313,7 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		b.StopTimer()
 		// Drop the current transport, transitioning the session to suspended.
 		mt.InjectError(errors.New("bench: transport closed"))
-		<-dropped
+		waitFor(dropped, "transport drop")
 
 		// Fill the resume buffer to capacity. Broadcasts during suspension
 		// land in resumeBuffer (drop-oldest at full).
@@ -318,6 +329,6 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		mt = newMockTransport()
 		b.StartTimer()
 		wspulse.InjectTransport(srv, connectionID, roomID, mt)
-		<-restored
+		waitFor(restored, "transport restore")
 	}
 }
