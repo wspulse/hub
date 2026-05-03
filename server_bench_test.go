@@ -2,6 +2,7 @@ package wspulse_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,15 +50,38 @@ func dialN(b *testing.B, srv wspulse.Hub, n int) (*httptest.Server, []*websocket
 	return ts, conns
 }
 
+// jsonPayload returns a valid JSON string payload with total byte length size.
+// size includes the surrounding quotes; minimum is 2 (an empty JSON string).
+func jsonPayload(size int) []byte {
+	if size < 2 {
+		size = 2
+	}
+	return []byte(`"` + strings.Repeat("x", size-2) + `"`)
+}
+
+// messageSizes is the standard payload size matrix shared by Broadcast and Send
+// benchmarks. Values match the workspace bench-harness plan.
+var messageSizes = []struct {
+	label string
+	size  int
+}{
+	{"64B", 64},
+	{"1KiB", 1024},
+	{"16KiB", 16 * 1024},
+}
+
 func BenchmarkBroadcast(b *testing.B) {
-	for _, roomSize := range []int{1, 10, 100} {
-		b.Run(fmt.Sprintf("room_%d", roomSize), func(b *testing.B) {
-			benchBroadcast(b, roomSize)
-		})
+	for _, roomSize := range []int{1, 10, 100, 1000} {
+		for _, ms := range messageSizes {
+			name := fmt.Sprintf("room=%d/messageSize=%s", roomSize, ms.label)
+			b.Run(name, func(b *testing.B) {
+				benchBroadcast(b, roomSize, ms.size)
+			})
+		}
 	}
 }
 
-func benchBroadcast(b *testing.B, roomSize int) {
+func benchBroadcast(b *testing.B, roomSize, payloadSize int) {
 	connected := make(chan struct{}, roomSize)
 	srv := wspulse.NewHub(
 		benchAcceptN(),
@@ -86,7 +110,7 @@ func benchBroadcast(b *testing.B, roomSize int) {
 		}
 	}
 
-	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -97,6 +121,14 @@ func benchBroadcast(b *testing.B, roomSize int) {
 }
 
 func BenchmarkSend(b *testing.B) {
+	for _, ms := range messageSizes {
+		b.Run(fmt.Sprintf("messageSize=%s", ms.label), func(b *testing.B) {
+			benchSend(b, ms.size)
+		})
+	}
+}
+
+func benchSend(b *testing.B, payloadSize int) {
 	var conn wspulse.Connection
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewHub(
@@ -142,7 +174,7 @@ func BenchmarkSend(b *testing.B) {
 		}
 	}()
 
-	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -203,5 +235,76 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast failed: %v", err)
 		}
+	}
+}
+
+// BenchmarkResumeBufferDrain measures the cost of one suspend → fill resume
+// buffer → reconnect cycle. The drain itself runs inside the heart goroutine
+// during attachWS, before onTransportRestore fires. The bench uses mock
+// transports (via InjectTransport) to avoid WebSocket dial overhead, so the
+// measurement is dominated by buffer drain + heart scheduling rather than
+// network noise.
+//
+// The fill phase (256 broadcasts to a suspended session) is bench-internal
+// setup and is excluded from the timed region via b.StopTimer/StartTimer.
+func BenchmarkResumeBufferDrain(b *testing.B) {
+	const (
+		bufferSize   = 256
+		connectionID = "bench-conn"
+		roomID       = "bench-room"
+	)
+
+	connected := make(chan struct{}, 1)
+	dropped := make(chan struct{}, b.N+1)
+	restored := make(chan struct{}, b.N+1)
+
+	srv := wspulse.NewHub(
+		func(r *http.Request) (string, string, error) {
+			return roomID, connectionID, nil
+		},
+		wspulse.WithResumeWindow(30*time.Second),
+		wspulse.WithSendBufferSize(bufferSize),
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			dropped <- struct{}{}
+		}),
+		wspulse.WithOnTransportRestore(func(_ wspulse.Connection) {
+			restored <- struct{}{}
+		}),
+	)
+	b.Cleanup(srv.Close)
+
+	// Initial connect.
+	mt := newMockTransport()
+	wspulse.InjectTransport(srv, connectionID, roomID, mt)
+	<-connected
+
+	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(64)}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		// Drop the current transport, transitioning the session to suspended.
+		mt.InjectError(errors.New("bench: transport closed"))
+		<-dropped
+
+		// Fill the resume buffer to capacity. Broadcasts during suspension
+		// land in resumeBuffer (drop-oldest at full).
+		for j := 0; j < bufferSize; j++ {
+			if err := srv.Broadcast(roomID, msg); err != nil {
+				b.Fatalf("Broadcast(fill): %v", err)
+			}
+		}
+
+		// Reconnect: a fresh mock transport triggers attachWS, which drains
+		// resumeBuffer back into the send queue inside the heart goroutine
+		// before onTransportRestore fires.
+		mt = newMockTransport()
+		b.StartTimer()
+		wspulse.InjectTransport(srv, connectionID, roomID, mt)
+		<-restored
 	}
 }
