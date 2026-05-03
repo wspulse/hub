@@ -45,3 +45,6 @@ jobs:
           name: bench-${{ github.sha }}
           path: bench.txt
           retention-days: 30
+          # If bench-ci failed before producing bench.txt, just warn so the
+          # original bench failure remains the primary signal.
+          if-no-files-found: warn
