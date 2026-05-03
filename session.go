@@ -186,13 +186,16 @@ func (s *session) cancelGraceTimer() {
 	s.mu.Unlock()
 }
 
-// Close initiates a graceful shutdown of the session and emits a close
-// frame with (StatusNormalClosure, "") to the remote peer. This is the
-// public Connection.Close() entry point used by application code.
+// Close initiates a graceful shutdown of the session. When a transport
+// is attached, writePump emits a close frame with (StatusNormalClosure,
+// "") to the remote peer before exiting. On a suspended session
+// (transport already dropped, awaiting resume) no close frame is sent —
+// the session is torn down via the heart's graceExpired path. This is
+// the public Connection.Close() entry point used by application code.
 //
 // Heart-driven teardown paths use closeWith directly to encode the
 // disconnect cause (e.g. kick, hub shutdown, duplicate conn_id) into the
-// close frame's reason string.
+// close frame's reason string when one is emitted.
 //
 // Safe to call multiple times; only the first call has effect.
 func (s *session) Close() error {
