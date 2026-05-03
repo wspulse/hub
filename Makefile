@@ -1,3 +1,7 @@
+# bash gives us `set -o pipefail` and `trap` for the bench targets below;
+# all existing recipes are POSIX-compatible so this is safe.
+SHELL := /bin/bash
+
 .PHONY: help test test-cover bench bench-ci bench-sync lint fmt check tidy deps clean
 
 # Default target
@@ -17,14 +21,16 @@ bench: ## Run benchmarks with memory allocation stats
 	@go test -bench=. -benchmem -run=^$$ ./...
 
 bench-ci: ## Run the CI benchmark suite and write results to BENCH_OUT or bench.txt
-	@outfile="$${BENCH_OUT:-bench.txt}"; \
+	@set -o pipefail; \
+		outfile="$${BENCH_OUT:-bench.txt}"; \
 		go test -bench=. -benchmem -benchtime=3s -count=1 -run=^$$ ./... | tee "$$outfile"
 
 bench-sync: ## Refresh docs/bench.md from a fresh local benchmark run
-	@tmpfile="$$(mktemp)"; \
+	@set -e; \
+		tmpfile="$$(mktemp)"; \
+		trap 'rm -f "$$tmpfile"' EXIT; \
 		$(MAKE) --no-print-directory bench-ci BENCH_OUT="$$tmpfile" > /dev/null; \
-		go run ./cmd/benchsync -input "$$tmpfile"; \
-		rm -f "$$tmpfile"
+		go run ./cmd/benchsync -input "$$tmpfile"
 
 lint: ## Run go vet and golangci-lint
 	@go vet ./...
