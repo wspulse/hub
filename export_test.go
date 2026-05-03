@@ -120,24 +120,30 @@ func DrainResumeBuffer(h Hub, connectionID string) (int, error) {
 	if !found {
 		return 0, fmt.Errorf("wspulse: DrainResumeBuffer: connection %q not found", connectionID)
 	}
+	// Mirror attachWS's drain loop locking exactly: hold sess.mu around
+	// each buffer.Drain() to serialise with concurrent Send() ForcePushes,
+	// release for the per-message ForceEnqueue (which is itself thread-safe),
+	// then re-acquire to check whether more arrived.
 	sess.mu.Lock()
-	buf := sess.resumeBuffer
-	sess.mu.Unlock()
-	if buf == nil {
+	if sess.resumeBuffer == nil {
+		sess.mu.Unlock()
 		return 0, fmt.Errorf("wspulse: DrainResumeBuffer: session %q has no resume buffer", connectionID)
 	}
 	drained := 0
 	for {
-		messages := buf.Drain()
+		messages := sess.resumeBuffer.Drain()
 		if len(messages) == 0 {
+			sess.mu.Unlock()
 			break
 		}
+		sess.mu.Unlock()
 		for _, data := range messages {
 			if _, err := sess.send.ForceEnqueue(data); err != nil {
 				return drained, fmt.Errorf("wspulse: DrainResumeBuffer: %w", err)
 			}
 			drained++
 		}
+		sess.mu.Lock()
 	}
 	return drained, nil
 }
