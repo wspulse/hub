@@ -18,30 +18,34 @@ The matrix covers:
   `messageSize ∈ {64 B, 1 KiB, 16 KiB}`.
 - `Send` — direct per-connection enqueue cost across the same payload sizes.
 - `Enqueue (drop-oldest)` — backpressure path when the send buffer is full.
-- `Resume buffer drain (256 msgs)` — cost of replaying a full 256-slot
-  resume buffer into the send queue at reconnect time. The drain runs in
-  a transition goroutine spawned by `attachWS`, not on the heart loop.
+- `Resume buffer drain (256 msgs)` — per-cycle cost of staging a full
+  256-slot resume buffer (256 `ForcePush` calls) and draining it back into
+  the send queue (`RingBuffer.Drain` + 256 `ForceEnqueue`). The bench uses
+  the test-only `PrefillResumeBuffer` / `DrainResumeBuffer` hooks so that
+  transition-goroutine scheduling, `InjectTransport` routing, and codec
+  encode cost are excluded — regressions land directly on the buffer-copy
+  operations. Divide ns/op by 256 for amortised per-message cost.
 
 <!-- benchsync:hub:start -->
 Measured on `darwin/arm64` (`Apple M1 Max`).
 
 | Operation | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
-| `Broadcast (room=1, 64 B)` | 590.1 | 337 | 4 |
-| `Broadcast (room=1, 1 KiB)` | 4,456 | 1,394 | 4 |
-| `Broadcast (room=1, 16 KiB)` | 62,792 | 18,686 | 4 |
-| `Broadcast (room=10, 64 B)` | 1,003 | 944 | 13 |
-| `Broadcast (room=10, 1 KiB)` | 4,579 | 1,989 | 13 |
-| `Broadcast (room=10, 16 KiB)` | 63,093 | 19,274 | 13 |
-| `Broadcast (room=100, 64 B)` | 9,384 | 7,842 | 119 |
-| `Broadcast (room=100, 1 KiB)` | 6,937 | 7,352 | 96 |
-| `Broadcast (room=100, 16 KiB)` | 63,211 | 25,167 | 105 |
-| `Broadcast (room=1000, 64 B)` | 136,610 | 99,925 | 1,491 |
-| `Broadcast (room=1000, 1 KiB)` | 4,819 | 1,591 | 7 |
-| `Broadcast (room=1000, 16 KiB)` | 65,607 | 23,086 | 72 |
-| `Send (64 B)` | 521.7 | 353 | 5 |
-| `Send (1 KiB)` | 4,648 | 4,779 | 37 |
-| `Send (16 KiB)` | 74,246 | 61,737 | 96 |
-| `Enqueue (drop-oldest)` | 412.2 | 289 | 4 |
-| `Resume buffer drain (256 msgs)` | 28,747 | 32,343 | 372 |
+| `Broadcast (room=1, 64 B)` | 631.8 | 337 | 4 |
+| `Broadcast (room=1, 1 KiB)` | 4,633 | 1,395 | 4 |
+| `Broadcast (room=1, 16 KiB)` | 64,090 | 18,686 | 4 |
+| `Broadcast (room=10, 64 B)` | 1,020 | 939 | 13 |
+| `Broadcast (room=10, 1 KiB)` | 4,580 | 1,988 | 13 |
+| `Broadcast (room=10, 16 KiB)` | 66,498 | 19,276 | 13 |
+| `Broadcast (room=100, 64 B)` | 10,016 | 7,922 | 120 |
+| `Broadcast (room=100, 1 KiB)` | 8,520 | 8,028 | 106 |
+| `Broadcast (room=100, 16 KiB)` | 72,170 | 25,141 | 104 |
+| `Broadcast (room=1000, 64 B)` | 304,390 | 134,025 | 1,949 |
+| `Broadcast (room=1000, 1 KiB)` | 6,001 | 1,779 | 10 |
+| `Broadcast (room=1000, 16 KiB)` | 66,870 | 23,705 | 81 |
+| `Send (64 B)` | 550.7 | 348 | 4 |
+| `Send (1 KiB)` | 4,795 | 4,706 | 36 |
+| `Send (16 KiB)` | 73,549 | 61,668 | 94 |
+| `Enqueue (drop-oldest)` | 396.8 | 289 | 4 |
+| `Resume buffer drain (256 msgs)` | 6,140 | 6,528 | 1 |
 <!-- benchsync:hub:end -->
