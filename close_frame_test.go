@@ -1,0 +1,165 @@
+package wspulse_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	core "github.com/wspulse/core"
+	wspulse "github.com/wspulse/hub"
+)
+
+// ── Hub shutdown close frame ────────────────────────────────────────────────
+
+// TestHub_Close_DuringBlockedWrite_StillEmitsServerShuttingDown verifies
+// the close-frame is still emitted when shutdown cancels pumpCtx while
+// writePump is blocked inside trans.Write. Real WebSocket writes can block
+// for up to writeTimeout on slow TCP, and without explicit handling in the
+// write-error path the close frame is silently dropped.
+func TestHub_Close_DuringBlockedWrite_StillEmitsServerShuttingDown(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+	)
+	// Safety net: srv.Close is also called explicitly below, but goleak
+	// would flag a leak if any assertion above the explicit Close fails.
+	t.Cleanup(srv.Close)
+
+	mt := newMockTransport()
+	// Make Write block until ctx done, simulating a slow TCP write.
+	mt.SetBlockWrite(true)
+	wspulse.InjectTransport(srv, "conn-1", "room-1", mt)
+	requireReceive(t, connected)
+
+	// Push a message so writePump dequeues and enters trans.Write.
+	conns := srv.GetConnections("room-1")
+	require.Len(t, conns, 1)
+	require.NoError(t, conns[0].Send(wspulse.Message{Event: "trigger", Payload: []byte(`"x"`)}))
+
+	// Synchronise: wait until writePump is actually inside trans.Write.
+	<-mt.writeEnteredCh
+
+	// Hub shutdown — pumpCtx cancels, trans.Write returns ctx.Err().
+	// The close-frame send must still happen on the way out.
+	srv.Close()
+
+	<-mt.closeCh
+
+	calls := mt.CloseCalls()
+	require.Len(t, calls, 1, "shutdown during blocked write must still emit close frame")
+	assert.Equal(t, core.StatusGoingAway, calls[0].code)
+	assert.Equal(t, "server shutting down", calls[0].reason)
+}
+
+// TestHub_Close_EmitsServerShuttingDown verifies that when the hub shuts down,
+// each session's writePump emits a close frame with StatusGoingAway (1001) and
+// the reason "server shutting down" — distinct from the default
+// (StatusNormalClosure, "") used for application-initiated session close.
+func TestHub_Close_EmitsServerShuttingDown(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+	)
+	// Safety net: srv.Close is also called explicitly below, but goleak
+	// would flag a leak if any assertion above the explicit Close fails.
+	t.Cleanup(srv.Close)
+
+	mt := injectAndWait(t, srv, "conn-1", "room-1", connected)
+
+	// hub.Close() drives the heart shutdown path, which should close every
+	// session with the (StatusGoingAway, "server shutting down") frame.
+	srv.Close()
+
+	// closeCh fires as soon as either trans.Close or trans.CloseNow runs.
+	// writePump's graceful trans.Close happens first on the shutdown path,
+	// so by the time we wake here the (code, reason) call is already
+	// recorded.
+	<-mt.closeCh
+
+	calls := mt.CloseCalls()
+	require.Len(t, calls, 1, "expected exactly one Close(code, reason) call from writePump shutdown path")
+	assert.Equal(t, core.StatusGoingAway, calls[0].code)
+	assert.Equal(t, "server shutting down", calls[0].reason)
+}
+
+// ── Kick close frame ────────────────────────────────────────────────────────
+
+// TestHub_Kick_EmitsKickedReason verifies that Hub.Kick produces a close
+// frame with StatusNormalClosure (1000) and the reason "kicked", letting
+// clients distinguish a server-initiated kick from a routine close on the
+// wire.
+func TestHub_Kick_EmitsKickedReason(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 1)
+	disconnected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			disconnected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	mt := injectAndWait(t, srv, "kick-target", "room-1", connected)
+
+	require.NoError(t, srv.Kick("kick-target"))
+	requireReceive(t, disconnected)
+	<-mt.closeCh
+
+	calls := mt.CloseCalls()
+	require.Len(t, calls, 1, "expected exactly one Close(code, reason) call from kick path")
+	assert.Equal(t, core.StatusNormalClosure, calls[0].code)
+	assert.Equal(t, "kicked", calls[0].reason)
+}
+
+// ── Duplicate conn_id close frame ───────────────────────────────────────────
+
+// TestHub_DuplicateConnectionID_EmitsDuplicateReason verifies that when a
+// second InjectTransport arrives with the same connectionID, the displaced
+// session's close frame is (1000, "duplicate connection id") rather than
+// the generic (1000, ""). This lets clients distinguish "your session was
+// taken over by a same-id login" from a routine close.
+func TestHub_DuplicateConnectionID_EmitsDuplicateReason(t *testing.T) {
+	t.Parallel()
+	connected := make(chan struct{}, 2)
+	disconnected := make(chan struct{}, 1)
+	srv := wspulse.NewHub(
+		acceptAll,
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			connected <- struct{}{}
+		}),
+		wspulse.WithOnDisconnect(func(_ wspulse.Connection, _ error) {
+			disconnected <- struct{}{}
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	first := injectAndWait(t, srv, "dup-conn", "room-1", connected)
+
+	// Second registration with the same conn_id evicts the first.
+	second := newMockTransport()
+	wspulse.InjectTransport(srv, "dup-conn", "room-1", second)
+	requireReceive(t, connected) // second session connects
+
+	// The first session is the one being kicked out — wait for its
+	// onDisconnect, then for its writePump to emit the close frame.
+	requireReceive(t, disconnected)
+	<-first.closeCh
+
+	calls := first.CloseCalls()
+	require.Len(t, calls, 1, "expected exactly one Close(code, reason) call from duplicate path")
+	assert.Equal(t, core.StatusNormalClosure, calls[0].code)
+	assert.Equal(t, "duplicate connection id", calls[0].reason)
+}

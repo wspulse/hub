@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/maxence2997/carousel"
+
+	core "github.com/wspulse/core"
 )
 
 // ── internal message types ────────────────────────────────────────────────────
@@ -176,7 +178,13 @@ func (h *heart) handleRegister(message registerMessage) {
 		done:        make(chan struct{}),
 		state:       stateConnected,
 		connectedAt: time.Now(),
-		config:      h.config,
+		// Default close-frame data; overridden by closeWith on heart-driven
+		// teardown paths (kick, hub shutdown, duplicate conn_id). Set
+		// explicitly so the readPump heart-shutdown safety-net path (which
+		// closes s.done directly via closeOnce without going through
+		// closeWith) still leaves writePump with a valid close code.
+		closeCode: core.StatusNormalClosure,
+		config:    h.config,
 	}
 	if h.config.resumeWindow > 0 {
 		newSession.resumeBuffer = carousel.NewRingBuffer[[]byte](h.config.sendBufferSize)
@@ -447,12 +455,44 @@ func (h *heart) handleBroadcast(message broadcastMessage) {
 // disconnectSession removes the session from heart maps, closes it, and fires
 // onDisconnect. Safe to call even if Close() was already called externally
 // (closeOnce makes it idempotent).
+//
+// The DisconnectReason is mapped to a (code, reason) pair via
+// closeFrameForReason so the close frame the remote peer receives carries
+// cause information. Hub shutdown (handled in shutdown()) uses the same
+// mapper, so closeFrameForReason is the single source of truth for the
+// close-frame mapping.
 func (h *heart) disconnectSession(target *session, err error, reason DisconnectReason) {
 	h.removeSession(target)
 	h.config.metrics.ConnectionClosed(target.roomID, target.id, time.Since(target.connectedAt), reason)
-	_ = target.Close()
+	code, frameReason := closeFrameForReason(reason)
+	_ = target.closeWith(code, frameReason)
 	if fn := h.config.onDisconnect; fn != nil {
 		go fn(target, err)
+	}
+}
+
+// closeFrameForReason returns the WebSocket close code and reason string the
+// hub should emit when terminating a session for the given DisconnectReason.
+//
+// Most cases use StatusNormalClosure (1000) — the server is performing an
+// intentional close, and the reason string carries the diagnostic context.
+// DisconnectHubClose is the exception: hub shutdown maps to StatusGoingAway
+// (1001), which is RFC 6455 §7.4.1's exact use of "server going away".
+func closeFrameForReason(reason DisconnectReason) (core.StatusCode, string) {
+	switch reason {
+	case DisconnectKick:
+		return core.StatusNormalClosure, "kicked"
+	case DisconnectDuplicate:
+		return core.StatusNormalClosure, "duplicate connection id"
+	case DisconnectHubClose:
+		return core.StatusGoingAway, "server shutting down"
+	default:
+		// DisconnectNormal, DisconnectGraceExpired, and any future reason
+		// that has not been assigned a dedicated string fall through to
+		// the wire-level default. DisconnectGraceExpired never reaches a
+		// live transport (the WebSocket already died before the grace
+		// timer fired), so the value is moot for that case.
+		return core.StatusNormalClosure, ""
 	}
 }
 
@@ -501,11 +541,12 @@ func (h *heart) shutdown() {
 	}
 	var closedInfos []closedInfo
 	var destroyedRooms []string
+	hubCloseCode, hubCloseReason := closeFrameForReason(DisconnectHubClose)
 	for roomID, room := range h.rooms {
 		for _, target := range room {
 			target.cancelGraceTimer()
 			closedInfos = append(closedInfos, closedInfo{target.roomID, target.id, time.Since(target.connectedAt)})
-			_ = target.Close()
+			_ = target.closeWith(hubCloseCode, hubCloseReason)
 			disconnected = append(disconnected, target)
 		}
 		destroyedRooms = append(destroyedRooms, roomID)

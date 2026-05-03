@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-02
+
+### Changed
+
+- Server-initiated close frames now carry cause-specific data instead of
+  always emitting `(1000, "")`. Wire-visible to clients but strictly more
+  informative — clients that ignored the close frame data are unaffected.
+  `core.StatusCode` is unchanged; the cause information lives in the reason
+  string. (#58)
+
+  New mapping:
+
+  | Cause                                       | Code   | Reason string             |
+  |---------------------------------------------|--------|---------------------------|
+  | Application `Connection.Close()`            | `1000` | `""` (unchanged)          |
+  | `Hub.Kick`                                  | `1000` | `"kicked"`                |
+  | Duplicate connection id displaces a session | `1000` | `"duplicate connection id"` |
+  | Hub shutdown (`Hub.Close`)                  | `1001` | `"server shutting down"`  |
+
+### Fixed
+
+- `writePump` no longer drops the graceful close frame when hub shutdown
+  cancels `pumpCtx`. Two exit paths were affected:
+  1. The priority-exit at the top of the write loop fired on both
+     reconnect-swap (correct) and shutdown (incorrect). It is now narrowed
+     to fire only while the session is still alive.
+  2. The `trans.Write` context-error branch returned without sending a
+     close frame, so any shutdown that raced an in-flight write silently
+     dropped the frame. Real TCP writes can block for up to `writeTimeout`,
+     so this race was reachable in production.
+
+  Both paths now share an `emitCloseFrameOnShutdown` helper that sends the
+  configured `(code, reason)` whenever `session.done` is closed.
+
 ## [0.11.2] - 2026-05-02
 
 ### Fixed
@@ -227,7 +261,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/wspulse/hub/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/wspulse/hub/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/wspulse/hub/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wspulse/hub/compare/v0.10.0...v0.11.0
