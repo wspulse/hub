@@ -64,6 +64,84 @@ func CloseSessionSendQueue(h Hub, connectionID string) error {
 	return nil
 }
 
+// PrefillResumeBuffer pushes count copies of data into the named session's
+// resume buffer via direct ForcePush, bypassing codec encoding and the
+// suspended-state check. Test-only — used by BenchmarkResumeBufferDrain to
+// stage a buffer for repeated drain measurements without paying encode cost
+// per iteration.
+//
+// The session's resumeBuffer must be non-nil (i.e. the hub was created
+// with WithResumeWindow > 0). Returns an error if the connection is not
+// found or the session has no resume buffer.
+func PrefillResumeBuffer(h Hub, connectionID string, data []byte, count int) error {
+	if h == nil {
+		panic("wspulse: PrefillResumeBuffer: hub must not be nil")
+	}
+	hub, ok := h.(*internalHub)
+	if !ok {
+		panic("wspulse: PrefillResumeBuffer: only works with hubs created by NewHub")
+	}
+	hub.heart.mu.RLock()
+	sess, found := hub.heart.connectionsByID[connectionID]
+	hub.heart.mu.RUnlock()
+	if !found {
+		return fmt.Errorf("wspulse: PrefillResumeBuffer: connection %q not found", connectionID)
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	if sess.resumeBuffer == nil {
+		return fmt.Errorf("wspulse: PrefillResumeBuffer: session %q has no resume buffer", connectionID)
+	}
+	for i := 0; i < count; i++ {
+		sess.resumeBuffer.ForcePush(data)
+	}
+	return nil
+}
+
+// DrainResumeBuffer drains the named session's resume buffer back into its
+// send queue, mirroring the drain step that attachWS runs in its transition
+// goroutine. Returns the number of items drained. Test-only — paired with
+// PrefillResumeBuffer to bench the drain operation in isolation from the
+// transition-goroutine scheduling and InjectTransport routing overhead.
+//
+// Unlike attachWS, this helper does NOT flip the session state, so the
+// caller can re-prefill and re-drain repeatedly inside a benchmark loop.
+func DrainResumeBuffer(h Hub, connectionID string) (int, error) {
+	if h == nil {
+		panic("wspulse: DrainResumeBuffer: hub must not be nil")
+	}
+	hub, ok := h.(*internalHub)
+	if !ok {
+		panic("wspulse: DrainResumeBuffer: only works with hubs created by NewHub")
+	}
+	hub.heart.mu.RLock()
+	sess, found := hub.heart.connectionsByID[connectionID]
+	hub.heart.mu.RUnlock()
+	if !found {
+		return 0, fmt.Errorf("wspulse: DrainResumeBuffer: connection %q not found", connectionID)
+	}
+	sess.mu.Lock()
+	buf := sess.resumeBuffer
+	sess.mu.Unlock()
+	if buf == nil {
+		return 0, fmt.Errorf("wspulse: DrainResumeBuffer: session %q has no resume buffer", connectionID)
+	}
+	drained := 0
+	for {
+		messages := buf.Drain()
+		if len(messages) == 0 {
+			break
+		}
+		for _, data := range messages {
+			if _, err := sess.send.ForceEnqueue(data); err != nil {
+				return drained, fmt.Errorf("wspulse: DrainResumeBuffer: %w", err)
+			}
+			drained++
+		}
+	}
+	return drained, nil
+}
+
 // InjectTransport bypasses ServeHTTP and pushes a registerMessage directly
 // into the Hub's internal event loop. Test-only — allows component tests to
 // inject mock transports without HTTP upgrade.
