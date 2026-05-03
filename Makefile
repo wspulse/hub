@@ -28,7 +28,7 @@ bench-ci: ## Run the CI benchmark suite and write results to BENCH_OUT or bench.
 bench-sync: ## Refresh docs/bench.md from a fresh local benchmark run
 	@echo "── running benchmarks ──"
 	@set -e; \
-		tmpfile="$$(mktemp)"; \
+		tmpfile="$$(mktemp -t wspulse-benchsync.XXXXXX)"; \
 		trap 'rm -f "$$tmpfile"' EXIT; \
 		$(MAKE) --no-print-directory bench-ci BENCH_OUT="$$tmpfile"; \
 		echo "── refreshing docs/bench.md ──"; \
