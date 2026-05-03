@@ -254,9 +254,13 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		roomID       = "bench-room"
 	)
 
+	// Buffered=1 + non-blocking send: each iteration produces exactly one
+	// drop and one restore, both consumed before the next iteration starts.
+	// Sizing channels b.N+1 is wasteful and signals the wrong sync model;
+	// the pattern below matches the other benches in this file.
 	connected := make(chan struct{}, 1)
-	dropped := make(chan struct{}, b.N+1)
-	restored := make(chan struct{}, b.N+1)
+	dropped := make(chan struct{}, 1)
+	restored := make(chan struct{}, 1)
 
 	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
@@ -265,13 +269,22 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		wspulse.WithResumeWindow(30*time.Second),
 		wspulse.WithSendBufferSize(bufferSize),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
-			connected <- struct{}{}
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
 		}),
 		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
-			dropped <- struct{}{}
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
 		}),
 		wspulse.WithOnTransportRestore(func(_ wspulse.Connection) {
-			restored <- struct{}{}
+			select {
+			case restored <- struct{}{}:
+			default:
+			}
 		}),
 	)
 	b.Cleanup(srv.Close)
