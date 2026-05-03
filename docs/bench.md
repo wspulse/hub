@@ -1,9 +1,11 @@
 # Benchmarks
 
-Numbers below are the latest CI-published baseline for `wspulse/hub`. Regenerate
-locally with `make bench-sync`. The CI workflow uploads the raw `bench.txt`
-output as an artefact on every PR; download it from the run page if you need
-to compare specific numbers between branches.
+The table below is a checked-in baseline for `wspulse/hub`, last refreshed
+locally by a maintainer running `make bench-sync` on the hardware noted in
+the table. The CI workflow runs the same benchmarks on every PR and uploads
+the raw `bench.txt` as an artefact; download it from the run page if you
+need to compare specific numbers between branches. CI does not regenerate
+or commit this file.
 
 Variance between machines is expected — these baselines are a regression
 sanity check, not a portability claim. Single runs at `-benchtime=3s -count=1`
