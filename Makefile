@@ -26,11 +26,14 @@ bench-ci: ## Run the CI benchmark suite and write results to BENCH_OUT or bench.
 		go test -bench=. -benchmem -benchtime=3s -count=1 -run=^$$ ./... | tee "$$outfile"
 
 bench-sync: ## Refresh docs/bench.md from a fresh local benchmark run
+	@echo "── running benchmarks ──"
 	@set -e; \
 		tmpfile="$$(mktemp)"; \
 		trap 'rm -f "$$tmpfile"' EXIT; \
-		$(MAKE) --no-print-directory bench-ci BENCH_OUT="$$tmpfile" > /dev/null; \
-		go run ./cmd/benchsync -input "$$tmpfile"
+		$(MAKE) --no-print-directory bench-ci BENCH_OUT="$$tmpfile"; \
+		echo "── refreshing docs/bench.md ──"; \
+		go run ./cmd/benchsync -input "$$tmpfile"; \
+		echo "── done ──"
 
 lint: ## Run go vet and golangci-lint
 	@go vet ./...
