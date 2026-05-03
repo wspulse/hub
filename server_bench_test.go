@@ -239,11 +239,14 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 }
 
 // BenchmarkResumeBufferDrain measures the cost of one suspend → fill resume
-// buffer → reconnect cycle. The drain itself runs inside the heart goroutine
-// during attachWS, before onTransportRestore fires. The bench uses mock
-// transports (via InjectTransport) to avoid WebSocket dial overhead, so the
-// measurement is dominated by buffer drain + heart scheduling rather than
-// network noise.
+// buffer → reconnect cycle. attachWS spawns a transition goroutine that
+// waits for the old pumps to exit, drains resumeBuffer into the send queue,
+// and then starts new pumps; the heart event loop is not blocked for the
+// drain itself. onTransportRestore fires after the transition goroutine
+// completes the drain, so the bench measures the full transition (cost
+// dominated by buffer drain + goroutine scheduling rather than network
+// noise — mock transports via InjectTransport eliminate WebSocket dial
+// overhead).
 //
 // The fill phase (256 broadcasts to a suspended session) is bench-internal
 // setup and is excluded from the timed region via b.StopTimer/StartTimer.
