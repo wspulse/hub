@@ -79,8 +79,10 @@ func TestHub_Close_EmitsServerShuttingDown(t *testing.T) {
 	// session with the (StatusGoingAway, "server shutting down") frame.
 	srv.Close()
 
-	// writePump's graceful close-frame send happens before the deferred
-	// CloseNow that fires closeCh.
+	// closeCh fires as soon as either trans.Close or trans.CloseNow runs.
+	// writePump's graceful trans.Close happens first on the shutdown path,
+	// so by the time we wake here the (code, reason) call is already
+	// recorded.
 	<-mt.closeCh
 
 	calls := mt.CloseCalls()

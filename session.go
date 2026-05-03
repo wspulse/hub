@@ -608,8 +608,8 @@ func (s *session) writePump(ctx context.Context, trans transport, pumpDone chan 
 		// (reconnect swap) — exit fast so the replacement pump owns the
 		// remaining messages in s.send. On full session shutdown (s.done
 		// closed) fall through so the err branch sends the graceful close
-		// frame; the send queue is closed in closeWith, so Pop returns
-		// promptly with ErrClosed.
+		// frame; closeWith closes both s.done and the send queue, so the
+		// next Pop returns promptly with either ErrClosed or ctx.Err().
 		select {
 		case <-ctx.Done():
 			select {
