@@ -112,8 +112,7 @@ func benchBroadcast(b *testing.B, roomSize, payloadSize int) {
 
 	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast: %v", err)
 		}
@@ -176,8 +175,7 @@ func benchSend(b *testing.B, payloadSize int) {
 
 	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// ErrSendBufferFull is expected at benchmark speed — the drain
 		// goroutine cannot keep up with the enqueue rate. The benchmark
 		// measures raw encode+enqueue cost including both paths.
@@ -230,26 +228,34 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkResumeBufferDrain measures the cost of one suspend → fill resume
-// buffer → reconnect cycle. attachWS spawns a transition goroutine that
-// waits for the old pumps to exit, drains resumeBuffer into the send queue,
-// and then starts new pumps; the heart event loop is not blocked for the
-// drain itself. onTransportRestore fires after the transition goroutine
-// completes the drain, so the bench measures the full transition (cost
-// dominated by buffer drain + goroutine scheduling rather than network
-// noise — mock transports via InjectTransport eliminate WebSocket dial
-// overhead).
+// BenchmarkResumeBufferDrain measures the per-cycle cost of staging a full
+// 256-slot resume buffer and draining it back into the send queue. The
+// drain logic is what attachWS runs in its transition goroutine when a
+// suspended session reconnects; this bench isolates that path from
+// transition-goroutine scheduling, InjectTransport routing, and codec
+// encode cost so regressions land directly on the buffer-copy operations.
 //
-// The fill phase (256 broadcasts to a suspended session) is bench-internal
-// setup and is excluded from the timed region via b.StopTimer/StartTimer.
+// Each iteration:
+//   - PrefillResumeBuffer: 256 direct ForcePush calls into resumeBuffer.
+//   - DrainResumeBuffer: pops every entry via RingBuffer.Drain and
+//     re-enqueues each onto the send queue with ForceEnqueue.
+//
+// Setup (one-time): connect a mock transport, drop it so the session is in
+// stateSuspended (which is what makes resumeBuffer the fill target), and
+// pre-encode a representative payload so the loop pays zero codec cost.
+//
+// Reported ns/op covers (256 ForcePush + 256 ForceEnqueue) per cycle —
+// divide by 256 to get amortised per-message cost. The original "full
+// reconnect cycle" measurement is intentionally not captured here; it
+// rolled in goroutine scheduling and channel routing that obscured drain
+// regressions.
 func BenchmarkResumeBufferDrain(b *testing.B) {
 	const (
 		bufferSize   = 256
@@ -257,19 +263,16 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		roomID       = "bench-room"
 	)
 
-	// Buffered=1 + non-blocking send: each iteration produces exactly one
-	// drop and one restore, both consumed before the next iteration starts.
-	// Sizing channels b.N+1 is wasteful and signals the wrong sync model;
-	// the pattern below matches the other benches in this file.
 	connected := make(chan struct{}, 1)
 	dropped := make(chan struct{}, 1)
-	restored := make(chan struct{}, 1)
 
 	srv := wspulse.NewHub(
 		func(r *http.Request) (string, string, error) {
 			return roomID, connectionID, nil
 		},
-		wspulse.WithResumeWindow(30*time.Second),
+		// resumeWindow only needs to outlast the bench setup; the drain
+		// hooks bypass the grace timer entirely.
+		wspulse.WithResumeWindow(time.Hour),
 		wspulse.WithSendBufferSize(bufferSize),
 		wspulse.WithOnConnect(func(_ wspulse.Connection) {
 			select {
@@ -283,18 +286,9 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 			default:
 			}
 		}),
-		wspulse.WithOnTransportRestore(func(_ wspulse.Connection) {
-			select {
-			case restored <- struct{}{}:
-			default:
-			}
-		}),
 	)
 	b.Cleanup(srv.Close)
 
-	// waitFor blocks on ch with a timeout; if the callback that fills ch
-	// fails to fire (regression in InjectTransport / resume wiring), the
-	// bench fails fast instead of hanging until the CI job timeout.
 	waitFor := func(ch <-chan struct{}, what string) {
 		select {
 		case <-ch:
@@ -303,35 +297,33 @@ func BenchmarkResumeBufferDrain(b *testing.B) {
 		}
 	}
 
-	// Initial connect.
+	// Setup: connect, then drop the transport so the session enters
+	// stateSuspended. PrefillResumeBuffer requires the session to exist;
+	// DrainResumeBuffer doesn't care about state but won't run if the
+	// session has already been removed.
 	mt := newMockTransport()
 	wspulse.InjectTransport(srv, connectionID, roomID, mt)
 	waitFor(connected, "initial connect")
+	mt.InjectError(errors.New("bench: transport closed"))
+	waitFor(dropped, "transport drop")
 
-	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(64)}
+	// Pre-encode the bench payload once; the inner loop reuses the
+	// encoded bytes via ForcePush, so no codec cost is included.
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Message{
+		Event:   "bench",
+		Payload: jsonPayload(64),
+	})
+	if err != nil {
+		b.Fatalf("JSONCodec.Encode setup: %v", err)
+	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		// Drop the current transport, transitioning the session to suspended.
-		mt.InjectError(errors.New("bench: transport closed"))
-		waitFor(dropped, "transport drop")
-
-		// Fill the resume buffer to capacity. Broadcasts during suspension
-		// land in resumeBuffer (drop-oldest at full).
-		for j := 0; j < bufferSize; j++ {
-			if err := srv.Broadcast(roomID, msg); err != nil {
-				b.Fatalf("Broadcast(fill): %v", err)
-			}
+	for b.Loop() {
+		if err := wspulse.PrefillResumeBuffer(srv, connectionID, encoded, bufferSize); err != nil {
+			b.Fatalf("PrefillResumeBuffer: %v", err)
 		}
-
-		// Reconnect: a fresh mock transport triggers attachWS, which spawns
-		// a transition goroutine to drain resumeBuffer back into the send
-		// queue. onTransportRestore fires after the drain completes.
-		mt = newMockTransport()
-		b.StartTimer()
-		wspulse.InjectTransport(srv, connectionID, roomID, mt)
-		waitFor(restored, "transport restore")
+		if _, err := wspulse.DrainResumeBuffer(srv, connectionID); err != nil {
+			b.Fatalf("DrainResumeBuffer: %v", err)
+		}
 	}
 }
