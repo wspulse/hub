@@ -1,6 +1,7 @@
-# bash gives us `set -o pipefail` and `trap` for the bench targets below;
-# all existing recipes are POSIX-compatible so this is safe.
-SHELL := /bin/bash
+# bash (looked up via PATH, not hardcoded to /bin/bash) gives us
+# `set -o pipefail` and `trap` for the bench targets below; all existing
+# recipes are POSIX-compatible so this is safe.
+SHELL := bash
 
 .PHONY: help test test-cover bench bench-ci bench-sync lint fmt check tidy deps clean
 
