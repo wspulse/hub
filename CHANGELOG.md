@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Benchmark harness with `make bench-ci`, `make bench-sync`, and a CI
+  workflow that uploads `bench.txt` as an artefact on every PR. See
+  `docs/bench.md` for the baseline numbers. (#71)
+
 ## [0.12.0] - 2026-05-02
 
 ### Changed

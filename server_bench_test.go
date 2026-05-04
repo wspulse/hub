@@ -2,6 +2,7 @@ package wspulse_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,15 +50,38 @@ func dialN(b *testing.B, srv wspulse.Hub, n int) (*httptest.Server, []*websocket
 	return ts, conns
 }
 
+// jsonPayload returns a valid JSON string payload with total byte length size.
+// size includes the surrounding quotes; minimum is 2 (an empty JSON string).
+func jsonPayload(size int) []byte {
+	if size < 2 {
+		size = 2
+	}
+	return []byte(`"` + strings.Repeat("x", size-2) + `"`)
+}
+
+// messageSizes is the standard payload size matrix shared by Broadcast and Send
+// benchmarks. Values match the workspace bench-harness plan.
+var messageSizes = []struct {
+	label string
+	size  int
+}{
+	{"64B", 64},
+	{"1KiB", 1024},
+	{"16KiB", 16 * 1024},
+}
+
 func BenchmarkBroadcast(b *testing.B) {
-	for _, roomSize := range []int{1, 10, 100} {
-		b.Run(fmt.Sprintf("room_%d", roomSize), func(b *testing.B) {
-			benchBroadcast(b, roomSize)
-		})
+	for _, roomSize := range []int{1, 10, 100, 1000} {
+		for _, ms := range messageSizes {
+			name := fmt.Sprintf("room=%d/messageSize=%s", roomSize, ms.label)
+			b.Run(name, func(b *testing.B) {
+				benchBroadcast(b, roomSize, ms.size)
+			})
+		}
 	}
 }
 
-func benchBroadcast(b *testing.B, roomSize int) {
+func benchBroadcast(b *testing.B, roomSize, payloadSize int) {
 	connected := make(chan struct{}, roomSize)
 	srv := wspulse.NewHub(
 		benchAcceptN(),
@@ -86,10 +110,9 @@ func benchBroadcast(b *testing.B, roomSize int) {
 		}
 	}
 
-	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast: %v", err)
 		}
@@ -97,6 +120,14 @@ func benchBroadcast(b *testing.B, roomSize int) {
 }
 
 func BenchmarkSend(b *testing.B) {
+	for _, ms := range messageSizes {
+		b.Run(fmt.Sprintf("messageSize=%s", ms.label), func(b *testing.B) {
+			benchSend(b, ms.size)
+		})
+	}
+}
+
+func benchSend(b *testing.B, payloadSize int) {
 	var conn wspulse.Connection
 	connected := make(chan struct{}, 1)
 	srv := wspulse.NewHub(
@@ -142,10 +173,9 @@ func BenchmarkSend(b *testing.B) {
 		}
 	}()
 
-	msg := wspulse.Message{Event: "bench", Payload: []byte(`{"v":1}`)}
+	msg := wspulse.Message{Event: "bench", Payload: jsonPayload(payloadSize)}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// ErrSendBufferFull is expected at benchmark speed — the drain
 		// goroutine cannot keep up with the enqueue rate. The benchmark
 		// measures raw encode+enqueue cost including both paths.
@@ -198,10 +228,102 @@ func BenchmarkEnqueue_DropOldest(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if err := srv.Broadcast("bench-room", msg); err != nil {
 			b.Fatalf("Broadcast failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkResumeBufferDrain measures the per-cycle cost of staging a full
+// 256-slot resume buffer and draining it back into the send queue. The
+// drain logic is what attachWS runs in its transition goroutine when a
+// suspended session reconnects; this bench isolates that path from
+// transition-goroutine scheduling, InjectTransport routing, and codec
+// encode cost so regressions land directly on the buffer-copy operations.
+//
+// Each iteration:
+//   - PrefillResumeBuffer: 256 direct ForcePush calls into resumeBuffer.
+//   - DrainResumeBuffer: pops every entry via RingBuffer.Drain and
+//     re-enqueues each onto the send queue with ForceEnqueue.
+//
+// Setup (one-time): connect a mock transport, drop it so the session is in
+// stateSuspended (which is what makes resumeBuffer the fill target), and
+// pre-encode a representative payload so the loop pays zero codec cost.
+//
+// Reported ns/op covers (256 ForcePush + 256 ForceEnqueue) per cycle —
+// divide by 256 to get amortised per-message cost. The original "full
+// reconnect cycle" measurement is intentionally not captured here; it
+// rolled in goroutine scheduling and channel routing that obscured drain
+// regressions.
+func BenchmarkResumeBufferDrain(b *testing.B) {
+	const (
+		bufferSize   = 256
+		connectionID = "bench-conn"
+		roomID       = "bench-room"
+	)
+
+	connected := make(chan struct{}, 1)
+	dropped := make(chan struct{}, 1)
+
+	srv := wspulse.NewHub(
+		func(r *http.Request) (string, string, error) {
+			return roomID, connectionID, nil
+		},
+		// resumeWindow only needs to outlast the bench setup; the drain
+		// hooks bypass the grace timer entirely.
+		wspulse.WithResumeWindow(time.Hour),
+		wspulse.WithSendBufferSize(bufferSize),
+		wspulse.WithOnConnect(func(_ wspulse.Connection) {
+			select {
+			case connected <- struct{}{}:
+			default:
+			}
+		}),
+		wspulse.WithOnTransportDrop(func(_ wspulse.Connection, _ error) {
+			select {
+			case dropped <- struct{}{}:
+			default:
+			}
+		}),
+	)
+	b.Cleanup(srv.Close)
+
+	waitFor := func(ch <-chan struct{}, what string) {
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			b.Fatalf("timed out waiting for %s", what)
+		}
+	}
+
+	// Setup: connect, then drop the transport so the session enters
+	// stateSuspended. PrefillResumeBuffer requires the session to exist;
+	// DrainResumeBuffer doesn't care about state but won't run if the
+	// session has already been removed.
+	mt := newMockTransport()
+	wspulse.InjectTransport(srv, connectionID, roomID, mt)
+	waitFor(connected, "initial connect")
+	mt.InjectError(errors.New("bench: transport closed"))
+	waitFor(dropped, "transport drop")
+
+	// Pre-encode the bench payload once; the inner loop reuses the
+	// encoded bytes via ForcePush, so no codec cost is included.
+	encoded, err := wspulse.JSONCodec.Encode(wspulse.Message{
+		Event:   "bench",
+		Payload: jsonPayload(64),
+	})
+	if err != nil {
+		b.Fatalf("JSONCodec.Encode setup: %v", err)
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := wspulse.PrefillResumeBuffer(srv, connectionID, encoded, bufferSize); err != nil {
+			b.Fatalf("PrefillResumeBuffer: %v", err)
+		}
+		if _, err := wspulse.DrainResumeBuffer(srv, connectionID); err != nil {
+			b.Fatalf("DrainResumeBuffer: %v", err)
 		}
 	}
 }
