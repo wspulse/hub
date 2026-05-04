@@ -106,6 +106,18 @@ func PrefillResumeBuffer(h Hub, connectionID string, data []byte, count int) err
 //
 // Unlike attachWS, this helper does NOT flip the session state, so the
 // caller can re-prefill and re-drain repeatedly inside a benchmark loop.
+//
+// DRIFT WARNING: this is a hand-rolled replica of the drain loop inside
+// session.attachWS — they intentionally share the same locking pattern
+// (sess.mu held around each resumeBuffer.Drain, released for per-message
+// ForceEnqueue, re-acquired before the next iteration). If you change the
+// prod drain logic (additional metrics, different lock scope, batched
+// ForceEnqueue, etc.) you MUST update this helper to match, otherwise
+// BenchmarkResumeBufferDrain will silently measure stale semantics and
+// regression detection will misfire. The cleaner long-term fix is to
+// extract drainResumeBuffer into a session method and have both attachWS
+// and this helper call it (deferred — would need a callback parameter to
+// preserve the atomic empty-Drain + state-flip invariant in attachWS).
 func DrainResumeBuffer(h Hub, connectionID string) (int, error) {
 	if h == nil {
 		panic("wspulse: DrainResumeBuffer: hub must not be nil")
