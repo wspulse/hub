@@ -135,15 +135,19 @@ func DrainResumeBuffer(h Hub, connectionID string) (int, error) {
 	// Mirror attachWS's drain loop locking exactly: hold sess.mu around
 	// each buffer.Drain() to serialise with concurrent Send() ForcePushes,
 	// release for the per-message ForceEnqueue (which is itself thread-safe),
-	// then re-acquire to check whether more arrived.
+	// then re-acquire to check whether more arrived. Capture the buffer
+	// pointer once under the initial lock — attachWS does the same so a
+	// concurrent closeWith (which nils sess.resumeBuffer) cannot nil-panic
+	// a drain in flight.
 	sess.mu.Lock()
-	if sess.resumeBuffer == nil {
+	buffer := sess.resumeBuffer
+	if buffer == nil {
 		sess.mu.Unlock()
 		return 0, fmt.Errorf("wspulse: DrainResumeBuffer: session %q has no resume buffer", connectionID)
 	}
 	drained := 0
 	for {
-		messages := sess.resumeBuffer.Drain()
+		messages := buffer.Drain()
 		if len(messages) == 0 {
 			sess.mu.Unlock()
 			break
