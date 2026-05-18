@@ -107,6 +107,15 @@ func PrefillResumeBuffer(h Hub, connectionID string, data []byte, count int) err
 // Unlike attachWS, this helper does NOT flip the session state, so the
 // caller can re-prefill and re-drain repeatedly inside a benchmark loop.
 //
+// INTENTIONAL DIVERGENCE: when sess.send.ForceEnqueue returns an error
+// (queue closed), attachWS logs and breaks — that path means the session
+// is terminating, which is a normal lifecycle event in production. Here
+// the helper returns the error instead. Inside a single-goroutine
+// benchmark a closed send queue is unexpected (teardown should not race
+// the iteration); surfacing it as an error makes BenchmarkResumeBufferDrain
+// fail loudly rather than silently report a partial drain count and
+// distort measurements.
+//
 // DRIFT WARNING: this is a hand-rolled replica of the drain loop inside
 // session.attachWS — they intentionally share the same locking pattern
 // (sess.mu held around each resumeBuffer.Drain, released for per-message
