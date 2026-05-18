@@ -123,4 +123,7 @@ func TestFormatMetric(t *testing.T) {
 	assert.Equal(t, "1,626", formatMetric("1626"))
 	assert.Equal(t, "3.007", formatMetric("3.007"))
 	assert.Equal(t, "65,118", formatMetric("65118"))
+	assert.Equal(t, "4,633.1", formatMetric("4633.1"))
+	assert.Equal(t, "1,234,567.89", formatMetric("1234567.89"))
+	assert.Equal(t, "-12,345.6", formatMetric("-12345.6"))
 }

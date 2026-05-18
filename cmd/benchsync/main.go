@@ -248,11 +248,12 @@ func replaceManagedBlock(markdown []byte, marker, content string) ([]byte, error
 }
 
 func formatMetric(value string) string {
-	if strings.Contains(value, ".") {
-		return strings.TrimRight(strings.TrimRight(value, "0"), ".")
+	intPart, fracPart, hasFrac := strings.Cut(value, ".")
+	if hasFrac {
+		fracPart = strings.TrimRight(fracPart, "0")
 	}
 
-	n, err := strconv.ParseInt(value, 10, 64)
+	n, err := strconv.ParseInt(intPart, 10, 64)
 	if err != nil {
 		return value
 	}
@@ -264,15 +265,22 @@ func formatMetric(value string) string {
 	}
 
 	raw := strconv.FormatInt(n, 10)
+	var grouped string
 	if len(raw) <= 3 {
-		return sign + raw
+		grouped = raw
+	} else {
+		var parts []string
+		for len(raw) > 3 {
+			parts = append([]string{raw[len(raw)-3:]}, parts...)
+			raw = raw[:len(raw)-3]
+		}
+		parts = append([]string{raw}, parts...)
+		grouped = strings.Join(parts, ",")
 	}
 
-	var parts []string
-	for len(raw) > 3 {
-		parts = append([]string{raw[len(raw)-3:]}, parts...)
-		raw = raw[:len(raw)-3]
+	out := sign + grouped
+	if hasFrac && fracPart != "" {
+		out += "." + fracPart
 	}
-	parts = append([]string{raw}, parts...)
-	return sign + strings.Join(parts, ",")
+	return out
 }
