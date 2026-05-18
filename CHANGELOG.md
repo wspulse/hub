@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-05-18
+
 ### Added
 
 - Benchmark harness with `make bench-ci`, `make bench-sync`, and a CI
@@ -267,7 +269,8 @@
 - `Server.Close` is synchronous — returns only after all goroutines exit
 - Data race in `attachWS` buffer length check
 
-[Unreleased]: https://github.com/wspulse/hub/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/wspulse/hub/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/wspulse/hub/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/wspulse/hub/compare/v0.11.2...v0.12.0
 [0.11.2]: https://github.com/wspulse/hub/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/wspulse/hub/compare/v0.11.0...v0.11.1
